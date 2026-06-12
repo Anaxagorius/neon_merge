@@ -30,3 +30,21 @@ pub struct RateDisplay;
 
 #[derive(Component)]
 pub struct TokenDisplay;
+
+// ── Upgrade system ───────────────────────────────────────────────────────────
+
+/// Identifies which upgrade a button or label belongs to.
+#[derive(Component, Clone, Copy, PartialEq, Eq, Debug)]
+pub enum UpgradeKind {
+    AuraMultiplier,
+    TokenCapacity,
+    MergeSpeed,
+}
+
+/// Marks a UI button entity as an upgrade button.
+#[derive(Component)]
+pub struct UpgradeButton(pub UpgradeKind);
+
+/// Marks the text child of an upgrade button so its label can be updated.
+#[derive(Component)]
+pub struct UpgradeLabel(pub UpgradeKind);
