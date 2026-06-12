@@ -1,10 +1,13 @@
+use bevy::core_pipeline::bloom::Bloom;
 use bevy::prelude::*;
 
+use crate::animations::{MergeFlash, SpawnPop};
 use crate::components::{GridPos, LabelEntity, ParagonButton, ParagonKind, RebirthButton, ShapeLabel, ShapeLevel, UpgradeButton, UpgradeKind};
 use crate::resources::{
     grid_to_world, world_to_grid, AuraPool, Grid, MergeTimer, RebirthState, SpawnTokens,
     UpgradeState, CELL_SIZE, GRID_COLS, GRID_ROWS, REBIRTH_THRESHOLD,
 };
+use crate::save::{write_save, SaveData};
 
 // ── Shape catalogue ───────────────────────────────────────────────────────────
 
@@ -42,36 +45,42 @@ pub fn shape_name(level: u32) -> &'static str {
     }
 }
 
-/// Neon colour for each shape level (1–25).
+/// HDR brightness multiplier applied to all shape colours.
+/// Values above 1.0 in linear space trigger Bloom glow on the HDR camera.
+const HDR_BOOST: f32 = 2.5;
+
+/// Neon colour for each shape level (1–25), expressed in linear HDR space
+/// so they bloom under the HDR camera with Bloom post-processing.
 pub fn shape_color(level: u32) -> Color {
-    match level {
-        1  => Color::srgb(0.10, 0.55, 1.00), // electric blue
-        2  => Color::srgb(0.00, 0.95, 0.90), // cyan
-        3  => Color::srgb(0.65, 0.10, 1.00), // deep purple
-        4  => Color::srgb(1.00, 0.10, 0.65), // hot pink
-        5  => Color::srgb(1.00, 0.82, 0.00), // gold
-        6  => Color::srgb(0.20, 1.00, 0.40), // neon green
-        7  => Color::srgb(1.00, 0.45, 0.00), // neon orange
-        8  => Color::srgb(0.50, 0.00, 1.00), // violet
-        9  => Color::srgb(0.00, 0.70, 1.00), // sky blue
-        10 => Color::srgb(1.00, 1.00, 0.30), // bright yellow
-        11 => Color::srgb(1.00, 0.20, 0.20), // red-orange
-        12 => Color::srgb(0.30, 1.00, 0.80), // aquamarine
-        13 => Color::srgb(0.80, 0.00, 0.80), // magenta
-        14 => Color::srgb(0.60, 1.00, 0.00), // chartreuse
-        15 => Color::srgb(0.00, 0.40, 1.00), // royal blue
-        16 => Color::srgb(1.00, 0.60, 0.80), // light pink
-        17 => Color::srgb(0.40, 0.80, 0.00), // olive green
-        18 => Color::srgb(1.00, 0.30, 0.30), // coral
-        19 => Color::srgb(0.20, 0.80, 1.00), // ice blue
-        20 => Color::srgb(0.90, 0.50, 1.00), // lavender
-        21 => Color::srgb(1.00, 0.70, 0.10), // amber
-        22 => Color::srgb(0.00, 1.00, 0.60), // mint
-        23 => Color::srgb(0.70, 0.20, 1.00), // indigo
-        24 => Color::srgb(1.00, 0.95, 0.70), // warm white
-        25 => Color::srgb(1.00, 1.00, 1.00), // pure white (Void)
-        _  => Color::WHITE,
-    }
+    let (r, g, b): (f32, f32, f32) = match level {
+        1  => (0.10, 0.55, 1.00), // electric blue
+        2  => (0.00, 0.95, 0.90), // cyan
+        3  => (0.65, 0.10, 1.00), // deep purple
+        4  => (1.00, 0.10, 0.65), // hot pink
+        5  => (1.00, 0.82, 0.00), // gold
+        6  => (0.20, 1.00, 0.40), // neon green
+        7  => (1.00, 0.45, 0.00), // neon orange
+        8  => (0.50, 0.00, 1.00), // violet
+        9  => (0.00, 0.70, 1.00), // sky blue
+        10 => (1.00, 1.00, 0.30), // bright yellow
+        11 => (1.00, 0.20, 0.20), // red-orange
+        12 => (0.30, 1.00, 0.80), // aquamarine
+        13 => (0.80, 0.00, 0.80), // magenta
+        14 => (0.60, 1.00, 0.00), // chartreuse
+        15 => (0.00, 0.40, 1.00), // royal blue
+        16 => (1.00, 0.60, 0.80), // light pink
+        17 => (0.40, 0.80, 0.00), // olive green
+        18 => (1.00, 0.30, 0.30), // coral
+        19 => (0.20, 0.80, 1.00), // ice blue
+        20 => (0.90, 0.50, 1.00), // lavender
+        21 => (1.00, 0.70, 0.10), // amber
+        22 => (0.00, 1.00, 0.60), // mint
+        23 => (0.70, 0.20, 1.00), // indigo
+        24 => (1.00, 0.95, 0.70), // warm white
+        25 => (1.00, 1.00, 1.00), // pure white (Void)
+        _  => (1.00, 1.00, 1.00),
+    };
+    Color::linear_rgb(r * HDR_BOOST, g * HDR_BOOST, b * HDR_BOOST)
 }
 
 /// Aura generated per second by a shape of this level.
@@ -92,7 +101,17 @@ pub fn aura_rate(level: u32) -> f64 {
 // ── Setup: camera & grid background ──────────────────────────────────────────
 
 pub fn setup_camera(mut commands: Commands) {
-    commands.spawn(Camera2d);
+    commands.spawn((
+        Camera2d,
+        Camera {
+            hdr: true,
+            ..default()
+        },
+        Bloom {
+            intensity: 0.25,
+            ..default()
+        },
+    ));
 }
 
 /// Spawn background tiles for every grid cell.
@@ -142,6 +161,7 @@ pub fn spawn_shape(
         .id();
 
     // Spawn the shape sprite, storing a reference to its label.
+    // Start at scale 0 so the SpawnPop animation can grow it in.
     let shape_entity = commands
         .spawn((
             Sprite {
@@ -149,10 +169,11 @@ pub fn spawn_shape(
                 custom_size: Some(Vec2::splat(CELL_SIZE - 6.0)),
                 ..default()
             },
-            Transform::from_xyz(world.x, world.y, 1.0),
+            Transform::from_xyz(world.x, world.y, 1.0).with_scale(Vec3::ZERO),
             GridPos { col, row },
             ShapeLevel(level),
             LabelEntity(label_entity),
+            SpawnPop(Timer::from_seconds(0.25, TimerMode::Once)),
         ))
         .id();
 
@@ -253,6 +274,11 @@ pub fn auto_merge(
                 }
 
                 let new_level = level_a + 1;
+                let new_color = shape_color(new_level);
+                // shape_color returns Color::linear_rgb, so to_linear() is a
+                // direct extraction of the already-linear values — no conversion
+                // needed, but it gives us the LinearRgba struct MergeFlash needs.
+                let new_color_linear: LinearRgba = new_color.to_linear();
 
                 // Despawn entity_b and its label (O(1) — ID stored directly).
                 commands.entity(label_b_ref.0).despawn();
@@ -277,15 +303,20 @@ pub fn auto_merge(
                     ))
                     .id();
 
-                // Upgrade entity_a in place.
+                // Upgrade entity_a in place; start with a white flash that fades
+                // to the new neon colour over 0.35 s.
                 commands.entity(entity_a).insert((
                     ShapeLevel(new_level),
                     Sprite {
-                        color: shape_color(new_level),
+                        color: Color::linear_rgb(3.5, 3.5, 3.5), // HDR white flash
                         custom_size: Some(Vec2::splat(CELL_SIZE - 6.0)),
                         ..default()
                     },
                     LabelEntity(new_label),
+                    MergeFlash {
+                        timer: Timer::from_seconds(0.35, TimerMode::Once),
+                        base_color: new_color_linear,
+                    },
                 ));
 
                 return; // one merge per tick
@@ -406,6 +437,18 @@ pub fn handle_rebirth(
     tokens.regen_rate = SpawnTokens::default().regen_rate;
     *upgrades = reset_upgrades;
     *merge_timer = MergeTimer::default();
+
+    // Persist progress immediately after the rebirth.
+    write_save(&SaveData {
+        aura_total: aura.total,
+        aura_multi_level: upgrades.aura_multi_level,
+        token_cap_level: upgrades.token_cap_level,
+        merge_speed_level: upgrades.merge_speed_level,
+        rebirth_count: rebirth.rebirth_count,
+        paragon_points: rebirth.paragon_points,
+        paragon_aura_level: rebirth.paragon_aura_level,
+        paragon_regen_level: rebirth.paragon_regen_level,
+    });
 }
 
 // ── Paragon upgrades ──────────────────────────────────────────────────────────

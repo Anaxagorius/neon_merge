@@ -1,11 +1,15 @@
 use bevy::prelude::*;
 
+mod animations;
 mod components;
 mod resources;
+mod save;
 mod systems;
 mod ui;
 
+use animations::{animate_merge_flash, animate_spawn_pop};
 use resources::{AuraPool, Grid, MergeTimer, RebirthState, SpawnTokens, UpgradeState};
+use save::{auto_save, load_game, AutoSaveTimer};
 use systems::{
     auto_merge, generate_aura, handle_input, handle_paragon_upgrades, handle_rebirth,
     handle_upgrades, regen_tokens, setup_camera, setup_grid,
@@ -32,8 +36,9 @@ fn main() {
         .init_resource::<MergeTimer>()
         .init_resource::<UpgradeState>()
         .init_resource::<RebirthState>()
+        .init_resource::<AutoSaveTimer>()
         // Startup
-        .add_systems(Startup, (setup_camera, setup_grid, setup_hud))
+        .add_systems(Startup, (setup_camera, setup_grid, setup_hud, load_game))
         // Every frame
         .add_systems(
             Update,
@@ -45,6 +50,9 @@ fn main() {
                 handle_upgrades,
                 handle_rebirth,
                 handle_paragon_upgrades,
+                animate_spawn_pop,
+                animate_merge_flash,
+                auto_save,
                 update_hud,
                 update_upgrade_panel,
                 update_rebirth_panel,
