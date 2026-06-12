@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::components::{GridPos, ShapeLabel, ShapeLevel};
+use crate::components::{GridPos, LabelEntity, ShapeLabel, ShapeLevel};
 use crate::resources::{
     grid_to_world, world_to_grid, AuraPool, Grid, MergeTimer, SpawnTokens, CELL_SIZE, GRID_COLS,
     GRID_ROWS,
@@ -72,6 +72,9 @@ pub fn setup_grid(mut commands: Commands) {
 
 // ── Spawn a shape entity ──────────────────────────────────────────────────────
 
+/// Spawns a shape at `(col, row)` and registers it in `grid`.
+/// The level-number label is a separate entity whose ID is stored on the
+/// shape via [`LabelEntity`] so it can be despawned in O(1).
 pub fn spawn_shape(
     commands: &mut Commands,
     grid: &mut Grid,
@@ -80,36 +83,38 @@ pub fn spawn_shape(
     level: u32,
 ) -> Entity {
     let world = grid_to_world(col, row);
-    let color = shape_color(level);
 
-    // Parent shape sprite
-    let entity = commands
+    // Spawn the floating label first so we know its entity ID.
+    let label_entity = commands
+        .spawn((
+            Text2d::new(level.to_string()),
+            TextFont {
+                font_size: 26.0,
+                ..default()
+            },
+            TextColor(Color::WHITE),
+            Transform::from_xyz(world.x, world.y, 2.0),
+            ShapeLabel,
+        ))
+        .id();
+
+    // Spawn the shape sprite, storing a reference to its label.
+    let shape_entity = commands
         .spawn((
             Sprite {
-                color,
+                color: shape_color(level),
                 custom_size: Some(Vec2::splat(CELL_SIZE - 6.0)),
                 ..default()
             },
             Transform::from_xyz(world.x, world.y, 1.0),
             GridPos { col, row },
             ShapeLevel(level),
+            LabelEntity(label_entity),
         ))
         .id();
 
-    // Child label showing level number
-    commands.spawn((
-        Text2d::new(level.to_string()),
-        TextFont {
-            font_size: 26.0,
-            ..default()
-        },
-        TextColor(Color::WHITE),
-        Transform::from_xyz(world.x, world.y, 2.0),
-        ShapeLabel,
-    ));
-
-    grid.insert(col, row, entity);
-    entity
+    grid.insert(col, row, shape_entity);
+    shape_entity
 }
 
 // ── Input: click to spawn ─────────────────────────────────────────────────────
@@ -166,88 +171,76 @@ pub fn auto_merge(
     mut grid: ResMut<Grid>,
     time: Res<Time>,
     mut merge_timer: ResMut<MergeTimer>,
-    shapes_q: Query<&ShapeLevel>,
-    label_q: Query<(Entity, &Transform), With<ShapeLabel>>,
+    shapes_q: Query<(&ShapeLevel, &LabelEntity)>,
 ) {
     merge_timer.0.tick(time.delta());
     if !merge_timer.0.just_finished() {
         return;
     }
 
-    // Collect all occupied cells and their levels
-    let occupied: Vec<((i32, i32), Entity, u32)> = grid
+    // Collect occupied cells with level and label ID.
+    let occupied: Vec<((i32, i32), Entity, u32, Entity)> = grid
         .cells
         .iter()
         .filter_map(|(&pos, &entity)| {
-            shapes_q.get(entity).ok().map(|sl| (pos, entity, sl.0))
+            shapes_q
+                .get(entity)
+                .ok()
+                .map(|(sl, le)| (pos, entity, sl.0, le.0))
         })
         .collect();
 
-    // Find the first mergeable pair: adjacent cells with same level < MAX
-    for &((col_a, row_a), entity_a, level_a) in &occupied {
+    // Find the first mergeable pair: adjacent cells with the same level < MAX.
+    for &((col_a, row_a), entity_a, level_a, label_a) in &occupied {
         if level_a >= MAX_LEVEL {
             continue;
         }
         for (col_b, row_b) in Grid::neighbours(col_a, row_a) {
             if let Some(&entity_b) = grid.cells.get(&(col_b, row_b)) {
-                if let Ok(sl_b) = shapes_q.get(entity_b) {
-                    if sl_b.0 == level_a {
-                        // Merge! Keep cell A, remove cell B, upgrade A.
-                        let new_level = level_a + 1;
-
-                        // Remove entity_b from grid and despawn it (plus its label)
-                        grid.remove(col_b, row_b);
-                        commands.entity(entity_b).despawn();
-
-                        // Despawn label for entity_a (we'll spawn a fresh one)
-                        let world_a = grid_to_world(col_a, row_a);
-                        for (label_e, label_xf) in label_q.iter() {
-                            if (label_xf.translation.truncate()
-                                - world_a.truncate())
-                            .length()
-                                < 2.0
-                            {
-                                commands.entity(label_e).despawn();
-                            }
-                        }
-                        // Despawn label for entity_b
-                        let world_b = grid_to_world(col_b, row_b);
-                        for (label_e, label_xf) in label_q.iter() {
-                            if (label_xf.translation.truncate()
-                                - world_b.truncate())
-                            .length()
-                                < 2.0
-                            {
-                                commands.entity(label_e).despawn();
-                            }
-                        }
-
-                        // Upgrade entity_a in place
-                        commands
-                            .entity(entity_a)
-                            .insert(ShapeLevel(new_level))
-                            .insert(Sprite {
-                                color: shape_color(new_level),
-                                custom_size: Some(Vec2::splat(CELL_SIZE - 6.0)),
-                                ..default()
-                            });
-
-                        // Spawn new label for upgraded shape
-                        let world = grid_to_world(col_a, row_a);
-                        commands.spawn((
-                            Text2d::new(new_level.to_string()),
-                            TextFont {
-                                font_size: 26.0,
-                                ..default()
-                            },
-                            TextColor(Color::WHITE),
-                            Transform::from_xyz(world.x, world.y, 2.0),
-                            ShapeLabel,
-                        ));
-
-                        return; // one merge per tick
-                    }
+                let Ok((sl_b, label_b_ref)) = shapes_q.get(entity_b) else {
+                    continue;
+                };
+                if sl_b.0 != level_a {
+                    continue;
                 }
+
+                let new_level = level_a + 1;
+
+                // Despawn entity_b and its label (O(1) — ID stored directly).
+                commands.entity(label_b_ref.0).despawn();
+                commands.entity(entity_b).despawn();
+                grid.remove(col_b, row_b);
+
+                // Despawn the old label for entity_a.
+                commands.entity(label_a).despawn();
+
+                // Spawn a new label for the upgraded level.
+                let world = grid_to_world(col_a, row_a);
+                let new_label = commands
+                    .spawn((
+                        Text2d::new(new_level.to_string()),
+                        TextFont {
+                            font_size: 26.0,
+                            ..default()
+                        },
+                        TextColor(Color::WHITE),
+                        Transform::from_xyz(world.x, world.y, 2.0),
+                        ShapeLabel,
+                    ))
+                    .id();
+
+                // Upgrade entity_a in place.
+                commands.entity(entity_a).insert((
+                    ShapeLevel(new_level),
+                    Sprite {
+                        color: shape_color(new_level),
+                        custom_size: Some(Vec2::splat(CELL_SIZE - 6.0)),
+                        ..default()
+                    },
+                    LabelEntity(new_label),
+                ));
+
+                return; // one merge per tick
             }
         }
     }

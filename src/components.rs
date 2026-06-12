@@ -11,7 +11,12 @@ pub struct GridPos {
     pub row: i32,
 }
 
-/// Marks the Label entity that displays a shape's level number.
+/// Reference from a shape entity to its floating level-number label entity,
+/// so we can despawn the label in O(1) without a position-based search.
+#[derive(Component)]
+pub struct LabelEntity(pub Entity);
+
+/// Marks the label entity that displays a shape's level number.
 #[derive(Component)]
 pub struct ShapeLabel;
 

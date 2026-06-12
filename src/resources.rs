@@ -114,7 +114,7 @@ impl Default for SpawnTokens {
         Self {
             current: 5.0,
             max: 10.0,
-            regen_rate: 0.5, // 1 token every 2 seconds
+            regen_rate: 0.5, // 0.5 tokens per second (one token every 2 seconds)
         }
     }
 }
