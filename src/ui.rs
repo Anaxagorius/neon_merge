@@ -155,7 +155,7 @@ pub fn update_upgrade_panel(
                     "⚡ Aura Rate\nLv {} | x{:.1}→x{:.1}\n{}⚡",
                     upgrades.aura_multi_level,
                     upgrades.aura_multiplier(),
-                    upgrades.aura_multiplier() + 0.5,
+                    upgrades.next_aura_multiplier(),
                     fmt_aura(cost)
                 );
             }
@@ -165,7 +165,7 @@ pub fn update_upgrade_panel(
                     "📦 Token Cap\nLv {} | {}→{}\n{}⚡",
                     upgrades.token_cap_level,
                     upgrades.token_capacity() as u32,
-                    upgrades.token_capacity() as u32 + 5,
+                    upgrades.next_token_capacity() as u32,
                     fmt_aura(cost)
                 );
             }

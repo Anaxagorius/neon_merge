@@ -76,6 +76,7 @@ pub fn shape_color(level: u32) -> Color {
 
 /// Aura generated per second by a shape of this level.
 /// Levels 1–5 are tuned by hand; 6–25 follow a ×4 exponential curve.
+/// Levels above MAX_LEVEL are unreachable in normal gameplay but return 0.0.
 pub fn aura_rate(level: u32) -> f64 {
     match level {
         1 => 0.1,
@@ -83,7 +84,8 @@ pub fn aura_rate(level: u32) -> f64 {
         3 => 1.5,
         4 => 6.0,
         5 => 25.0,
-        _ => 0.1 * 4.0f64.powi(level as i32 - 1),
+        6..=MAX_LEVEL => 0.1 * 4.0f64.powi(level as i32 - 1),
+        _ => 0.0,
     }
 }
 

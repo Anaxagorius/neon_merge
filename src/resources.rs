@@ -154,8 +154,14 @@ impl UpgradeState {
     pub fn aura_multiplier(&self) -> f64 {
         1.0 + 0.5 * self.aura_multi_level as f64
     }
+    pub fn next_aura_multiplier(&self) -> f64 {
+        1.0 + 0.5 * (self.aura_multi_level + 1) as f64
+    }
     pub fn token_capacity(&self) -> f32 {
         10.0 + 5.0 * self.token_cap_level as f32
+    }
+    pub fn next_token_capacity(&self) -> f32 {
+        10.0 + 5.0 * (self.token_cap_level + 1) as f32
     }
     pub fn merge_interval(&self) -> f32 {
         Self::merge_interval_at(self.merge_speed_level)
