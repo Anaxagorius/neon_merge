@@ -3,9 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
 
 use crate::components::{GridPos, ShapeLevel};
-use crate::resources::{AuraPool, MergeTimer, RebirthState, SpawnTokens, UpgradeState};
+use crate::resources::{AuraPool, Grid, MergeTimer, RebirthState, SpawnTokens, UpgradeState};
 use crate::systems::spawn_shape;
-use crate::resources::Grid;
 
 // ── Save file location ────────────────────────────────────────────────────────
 
