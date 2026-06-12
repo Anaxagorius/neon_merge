@@ -2,7 +2,10 @@ use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
 
+use crate::components::{GridPos, ShapeLevel};
 use crate::resources::{AuraPool, MergeTimer, RebirthState, SpawnTokens, UpgradeState};
+use crate::systems::spawn_shape;
+use crate::resources::Grid;
 
 // ── Save file location ────────────────────────────────────────────────────────
 
@@ -27,6 +30,15 @@ pub struct SaveData {
     pub paragon_points: u32,
     pub paragon_aura_level: u32,
     pub paragon_regen_level: u32,
+    // Grid state
+    pub shapes: Vec<SavedShape>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy)]
+pub struct SavedShape {
+    pub col: i32,
+    pub row: i32,
+    pub level: u32,
 }
 
 // ── Helpers (called directly from systems) ────────────────────────────────────
@@ -67,6 +79,8 @@ impl Default for AutoSaveTimer {
 /// Startup system — loads the save file and applies it to all persistent
 /// resources.  Runs after every resource has been default-initialised.
 pub fn load_game(
+    mut commands: Commands,
+    mut grid: ResMut<Grid>,
     mut aura: ResMut<AuraPool>,
     mut upgrades: ResMut<UpgradeState>,
     mut tokens: ResMut<SpawnTokens>,
@@ -91,6 +105,17 @@ pub fn load_game(
     rebirth.paragon_points = data.paragon_points;
     rebirth.paragon_aura_level = data.paragon_aura_level;
     rebirth.paragon_regen_level = data.paragon_regen_level;
+    for saved in data.shapes {
+        if Grid::in_bounds(saved.col, saved.row) && grid.is_empty(saved.col, saved.row) {
+            spawn_shape(
+                &mut commands,
+                &mut grid,
+                saved.col,
+                saved.row,
+                saved.level,
+            );
+        }
+    }
 
     info!(
         "Save loaded: {} rebirths, {:.1} aura",
@@ -105,6 +130,7 @@ pub fn auto_save(
     aura: Res<AuraPool>,
     upgrades: Res<UpgradeState>,
     rebirth: Res<RebirthState>,
+    shapes_q: Query<(&ShapeLevel, &GridPos)>,
 ) {
     timer.0.tick(time.delta());
     if !timer.0.just_finished() {
@@ -119,6 +145,14 @@ pub fn auto_save(
         paragon_points: rebirth.paragon_points,
         paragon_aura_level: rebirth.paragon_aura_level,
         paragon_regen_level: rebirth.paragon_regen_level,
+        shapes: shapes_q
+            .iter()
+            .map(|(shape, pos)| SavedShape {
+                col: pos.col,
+                row: pos.row,
+                level: shape.0,
+            })
+            .collect(),
     });
     info!("Game auto-saved.");
 }
