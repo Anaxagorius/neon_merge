@@ -31,6 +31,36 @@ pub struct RateDisplay;
 #[derive(Component)]
 pub struct TokenDisplay;
 
+// ── Rebirth & Paragon UI markers ──────────────────────────────────────────────
+
+/// Marker on the top-HUD text that shows rebirth count + permanent multiplier.
+#[derive(Component)]
+pub struct RebirthDisplay;
+
+/// Identifies which Paragon upgrade a button / label belongs to.
+#[derive(Component, Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ParagonKind {
+    AuraBoost,
+    TokenRegen,
+}
+
+/// Marks the Rebirth action button.
+#[derive(Component)]
+pub struct RebirthButton;
+
+/// Marks the text label inside the Rebirth button so it can be updated to show
+/// availability, expected PP gain, and the permanent multiplier preview.
+#[derive(Component)]
+pub struct RebirthButtonLabel;
+
+/// Marks a Paragon upgrade button.
+#[derive(Component)]
+pub struct ParagonButton(pub ParagonKind);
+
+/// Marks the text child of a Paragon button so its label can be updated.
+#[derive(Component)]
+pub struct ParagonLabel(pub ParagonKind);
+
 // ── Upgrade system ───────────────────────────────────────────────────────────
 
 /// Identifies which upgrade a button or label belongs to.

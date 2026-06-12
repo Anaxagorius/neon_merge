@@ -1,9 +1,9 @@
 use bevy::prelude::*;
 
-use crate::components::{GridPos, LabelEntity, ShapeLabel, ShapeLevel, UpgradeButton, UpgradeKind};
+use crate::components::{GridPos, LabelEntity, ParagonButton, ParagonKind, RebirthButton, ShapeLabel, ShapeLevel, UpgradeButton, UpgradeKind};
 use crate::resources::{
-    grid_to_world, world_to_grid, AuraPool, Grid, MergeTimer, SpawnTokens, UpgradeState, CELL_SIZE,
-    GRID_COLS, GRID_ROWS,
+    grid_to_world, world_to_grid, AuraPool, Grid, MergeTimer, RebirthState, SpawnTokens,
+    UpgradeState, CELL_SIZE, GRID_COLS, GRID_ROWS, REBIRTH_THRESHOLD,
 };
 
 // ── Shape catalogue ───────────────────────────────────────────────────────────
@@ -203,8 +203,13 @@ pub fn handle_input(
 
 // ── Token regeneration ────────────────────────────────────────────────────────
 
-pub fn regen_tokens(time: Res<Time>, mut tokens: ResMut<SpawnTokens>) {
-    tokens.current = (tokens.current + tokens.regen_rate * time.delta_secs()).min(tokens.max);
+pub fn regen_tokens(
+    time: Res<Time>,
+    mut tokens: ResMut<SpawnTokens>,
+    rebirth: Res<RebirthState>,
+) {
+    let rate = tokens.regen_rate + rebirth.paragon_regen_bonus();
+    tokens.current = (tokens.current + rate * time.delta_secs()).min(tokens.max);
 }
 
 // ── Auto-merge adjacent same-level pairs ──────────────────────────────────────
@@ -295,11 +300,15 @@ pub fn generate_aura(
     time: Res<Time>,
     mut aura: ResMut<AuraPool>,
     upgrades: Res<UpgradeState>,
+    rebirth: Res<RebirthState>,
     shapes_q: Query<&ShapeLevel>,
 ) {
     let dt = time.delta_secs_f64();
     let base_rate: f64 = shapes_q.iter().map(|sl| aura_rate(sl.0)).sum();
-    let total_rate = base_rate * upgrades.aura_multiplier();
+    let total_rate = base_rate
+        * upgrades.aura_multiplier()
+        * rebirth.rebirth_aura_multiplier()
+        * rebirth.paragon_aura_multiplier();
     aura.rate = total_rate;
     aura.total += total_rate * dt;
 }
@@ -342,6 +351,86 @@ pub fn handle_upgrades(
                         upgrades.merge_interval(),
                         TimerMode::Repeating,
                     );
+                }
+            }
+        }
+    }
+}
+
+// ── Rebirth ───────────────────────────────────────────────────────────────────
+
+/// Triggered when the player presses the Rebirth button.
+///
+/// Requirements: at least one shape on the grid must be at level ≥
+/// `REBIRTH_THRESHOLD`.  On success the grid is cleared, session resources are
+/// reset, and the rebirth count / Paragon Points are updated.
+pub fn handle_rebirth(
+    mut commands: Commands,
+    interaction_q: Query<&Interaction, (Changed<Interaction>, With<RebirthButton>)>,
+    mut grid: ResMut<Grid>,
+    shapes_q: Query<(&ShapeLevel, &LabelEntity)>,
+    mut aura: ResMut<AuraPool>,
+    mut tokens: ResMut<SpawnTokens>,
+    mut upgrades: ResMut<UpgradeState>,
+    mut rebirth: ResMut<RebirthState>,
+    mut merge_timer: ResMut<MergeTimer>,
+) {
+    if interaction_q.iter().all(|i| *i != Interaction::Pressed) {
+        return;
+    }
+
+    // Determine the highest level shape currently on the grid.
+    let max_level = shapes_q.iter().map(|(sl, _)| sl.0).max().unwrap_or(0);
+    if max_level < REBIRTH_THRESHOLD {
+        return; // threshold not met — button press is ignored
+    }
+
+    // Award Paragon Points and advance the rebirth counter.
+    rebirth.paragon_points += RebirthState::pp_earned(max_level);
+    rebirth.rebirth_count += 1;
+
+    // Despawn every shape entity (and its floating label) then clear the grid.
+    for &entity in grid.cells.values() {
+        if let Ok((_, label)) = shapes_q.get(entity) {
+            commands.entity(label.0).despawn();
+        }
+        commands.entity(entity).despawn();
+    }
+    grid.cells.clear();
+
+    // Reset all session-scoped resources to their defaults.
+    *aura = AuraPool::default();
+    let reset_upgrades = UpgradeState::default();
+    tokens.max = reset_upgrades.token_capacity();
+    tokens.current = tokens.current.min(tokens.max);
+    tokens.regen_rate = SpawnTokens::default().regen_rate;
+    *upgrades = reset_upgrades;
+    *merge_timer = MergeTimer::default();
+}
+
+// ── Paragon upgrades ──────────────────────────────────────────────────────────
+
+pub fn handle_paragon_upgrades(
+    interaction_q: Query<(&Interaction, &ParagonButton), Changed<Interaction>>,
+    mut rebirth: ResMut<RebirthState>,
+) {
+    for (interaction, btn) in interaction_q.iter() {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        match btn.0 {
+            ParagonKind::AuraBoost => {
+                let cost = rebirth.paragon_aura_cost();
+                if rebirth.paragon_points >= cost {
+                    rebirth.paragon_points -= cost;
+                    rebirth.paragon_aura_level += 1;
+                }
+            }
+            ParagonKind::TokenRegen => {
+                let cost = rebirth.paragon_regen_cost();
+                if rebirth.paragon_points >= cost {
+                    rebirth.paragon_points -= cost;
+                    rebirth.paragon_regen_level += 1;
                 }
             }
         }

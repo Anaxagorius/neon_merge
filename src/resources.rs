@@ -171,6 +171,66 @@ impl UpgradeState {
     }
 }
 
+// ── Rebirth & Paragon ─────────────────────────────────────────────────────────
+
+/// Minimum shape level that must exist on the grid to trigger a Rebirth.
+pub const REBIRTH_THRESHOLD: u32 = 10;
+
+/// Persistent state that survives Rebirths (Paragon levels) and accumulates
+/// across them (rebirth count, Paragon Points).
+#[derive(Resource, Default)]
+pub struct RebirthState {
+    /// Number of times the player has rebirthed.
+    pub rebirth_count: u32,
+    /// Unspent Paragon Points.
+    pub paragon_points: u32,
+    /// Paragon upgrade level: permanent Aura multiplier.
+    pub paragon_aura_level: u32,
+    /// Paragon upgrade level: permanent token-regen bonus.
+    pub paragon_regen_level: u32,
+}
+
+impl RebirthState {
+    /// Permanently compounds Aura rate by ×1.20 per rebirth.
+    /// 1 rebirth → ×1.20, 2 → ×1.44, 5 → ×2.49, etc.
+    pub fn rebirth_aura_multiplier(&self) -> f64 {
+        1.20_f64.powi(self.rebirth_count as i32)
+    }
+
+    /// +30 % permanent Aura multiplier per Paragon Aura level.
+    pub fn paragon_aura_multiplier(&self) -> f64 {
+        1.0 + 0.30 * self.paragon_aura_level as f64
+    }
+
+    pub fn next_paragon_aura_multiplier(&self) -> f64 {
+        1.0 + 0.30 * (self.paragon_aura_level + 1) as f64
+    }
+
+    /// +0.20 tokens / s bonus per Paragon Regen level.
+    pub fn paragon_regen_bonus(&self) -> f32 {
+        0.20 * self.paragon_regen_level as f32
+    }
+
+    pub fn next_paragon_regen_bonus(&self) -> f32 {
+        0.20 * (self.paragon_regen_level + 1) as f32
+    }
+
+    /// PP cost doubles each level: 1, 2, 4, 8, …
+    pub fn paragon_aura_cost(&self) -> u32 {
+        1u32.checked_shl(self.paragon_aura_level).unwrap_or(u32::MAX)
+    }
+
+    pub fn paragon_regen_cost(&self) -> u32 {
+        1u32.checked_shl(self.paragon_regen_level).unwrap_or(u32::MAX)
+    }
+
+    /// Paragon Points earned when rebirthing with the given highest shape level.
+    /// Formula: floor(max_level / 5), minimum 1 when threshold is met.
+    pub fn pp_earned(max_level: u32) -> u32 {
+        (max_level / 5).max(1)
+    }
+}
+
 // ── Large-number formatter ────────────────────────────────────────────────────
 
 /// Formats an aura value with appropriate suffix (K, M, B, T, Qa).
