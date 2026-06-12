@@ -1,0 +1,264 @@
+📄 Project Proposal: Neon Merge — A Rust-Based Idle Merge Game
+🧠 Executive Summary
+Neon Merge is a stylized mobile idle-merge game set in a vibrant neon world of geometric shapes. Built using Rust and the Bevy game engine, the project aims to deliver high performance, modular architecture, and a scalable progression system.
+The game combines:
+
+Merge mechanics
+Idle resource generation (“Aura”)
+Upgrade systems
+Prestige (Rebirth) and long-term Paragon progression
+
+This project prioritizes:
+
+Clean systems architecture
+High performance
+Long-term maintainability
+Modern rendering techniques
+
+
+🎮 Game Concept Overview
+🌌 Theme & Art Direction
+
+Neon-inspired world with electric blues and purples
+Minimalist geometric shapes (25+ levels)
+Glow effects, pulses, and energy flows
+Clean, responsive UI
+
+🔁 Core Gameplay Loop
+
+Spawn geometric shapes on a grid
+Merge identical shapes → evolve to higher tier
+Generate Aura (primary currency)
+Spend Aura on upgrades
+Reinforce progression via:
+
+Rebirth (reset loop)
+Paragon system (persistent buffs)
+
+
+
+
+⚙️ Technical Stack
+🦀 Core Technology
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+LayerTechnologyGame EngineBevy (Rust ECS Engine)LanguageRustRenderingBevy + wgpuUIBevy UI (or egui integration)Build TargetAndroid (primary), Desktop (dev/testing)
+
+🧩 Architecture Approach
+✅ ECS (Entity Component System)
+Bevy uses ECS, enabling:
+
+Highly modular systems
+Clean separation of logic
+Scalable updates for many objects
+
+
+✅ Key Systems Design
+1. Shape System
+Each shape is an entity with:
+Ruststruct Shape {    level: u32,    aura_rate: f64,}Show more lines
+2. Merge System
+
+Detect matching shapes
+Despawn old entities
+Spawn upgraded entity
+
+3. Aura System (Idle Economy)
+
+Tick-based generation
+
+Rustaura += total_aura_rate * delta_time;``Show more lines
+4. Upgrade System
+
+Multipliers applied to:
+
+Aura rate
+Merge output
+
+
+Exponential scaling cost model
+
+
+5. Rebirth System
+
+Resets session state
+Rewards permanent multiplier
+
+6. Paragon System
+
+Long-term progression layer
+Unlocks automation and efficiency boosts
+
+
+🎨 Visual & UX Implementation
+Rendering Features:
+
+HDR-like glow via emissive materials
+Bloom effects for neon look
+Animated transitions using system-driven transforms
+
+UI/UX Goals:
+
+Clean, minimal interface
+Fast responsiveness
+Clear feedback loops (merge → glow → reward)
+
+
+📱 Platform Strategy
+Initial Target:
+
+✅ Android (Google Play Store)
+
+Deployment Considerations:
+
+Bevy Android pipeline setup required
+Native wrapping or Bevy Android support tools
+
+
+💾 Data & Persistence
+Save System:
+
+Local JSON or binary save
+Persistent state includes:
+
+Grid state
+Aura total
+Upgrades
+Rebirth count
+Paragon points
+
+
+
+
+💰 Monetization Strategy (Optional Future Phase)
+
+Rewarded ads (Aura boosts)
+Optional premium:
+
+Faster progression
+Cosmetic effects
+
+
+In-app purchases (currency packs)
+
+
+📊 Performance Strategy
+Rust advantages:
+
+Zero GC pauses
+Predictable performance
+Efficient memory usage
+
+Bevy optimizations:
+
+System scheduling
+Parallel execution
+Entity batching
+
+
+⚠️ Technical Challenges & Mitigation
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ChallengeMitigationMobile deployment complexityUse established Bevy Android workflowsUI limitationsIntegrate egui or custom UI layerSmaller ecosystem vs UnityBuild modular reusable systemsAds/IAP integrationImplement via platform plugins
+
+🧱 Development Roadmap
+Phase 1: Core Systems (MVP)
+
+Grid system
+Merge mechanics
+5 shapes
+Basic aura generation
+
+Phase 2: Expansion
+
+Full 25 shapes
+Upgrade system
+UI polish
+
+Phase 3: Progression
+
+Rebirth system
+Paragon system
+Balance tuning
+
+Phase 4: Polish & Launch
+
+Visual effects
+Performance optimization
+Mobile build & testing
+Play Store release
+
+
+🧠 Why Rust + Bevy?
+✅ Strategic Advantages
+
+High-performance runtime
+Strong type safety
+Clean ECS architecture
+Long-term scalability
+
+✅ Best Fit for This Project
+
+Heavy logic (progression, scaling)
+Moderate visuals (not AAA 3D)
+Focus on systems over assets
+
+
+🚀 Conclusion
+Neon Merge leverages Rust and Bevy to create a modern, performant idle merge experience with scalable progression systems. While this approach requires more setup than traditional engines, it offers:
+
+Greater architectural control
+Superior performance
+Clean, maintainable codebase
+
+This is a passion-driven, technically ambitious project with strong potential for both learning and production deployment.
