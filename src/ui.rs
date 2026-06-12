@@ -1,8 +1,8 @@
 use bevy::prelude::*;
 
 use crate::components::{
-    AuraDisplay, ParagonButton, ParagonKind, ParagonLabel, ParagonPointsDisplay, RateDisplay,
-    RebirthButton, RebirthDisplay, TokenDisplay, UpgradeButton, UpgradeKind, UpgradeLabel,
+    AuraDisplay, ParagonButton, ParagonKind, ParagonLabel, RateDisplay, RebirthButton,
+    RebirthButtonLabel, RebirthDisplay, TokenDisplay, UpgradeButton, UpgradeKind, UpgradeLabel,
 };
 use crate::resources::{fmt_aura, AuraPool, RebirthState, SpawnTokens, UpgradeState, REBIRTH_THRESHOLD};
 
@@ -142,8 +142,7 @@ pub fn setup_hud(mut commands: Commands) {
                             },
                             TextColor(Color::srgb(1.00, 0.75, 0.20)),
                             TextLayout::new_with_justify(JustifyText::Center),
-                            // reuse ParagonPointsDisplay as the rebirth button label
-                            ParagonPointsDisplay,
+                            RebirthButtonLabel,
                         ));
                     });
 
@@ -318,7 +317,7 @@ pub fn update_rebirth_panel(
     rebirth: Res<RebirthState>,
     shapes_q: Query<&crate::components::ShapeLevel>,
     mut buttons_q: Query<&mut BackgroundColor, With<RebirthButton>>,
-    mut labels_q: Query<&mut Text, With<ParagonPointsDisplay>>,
+    mut labels_q: Query<&mut Text, With<RebirthButtonLabel>>,
 ) {
     let max_level = shapes_q.iter().map(|sl| sl.0).max().unwrap_or(0);
     let available = max_level >= REBIRTH_THRESHOLD;
@@ -337,17 +336,13 @@ pub fn update_rebirth_panel(
     }
     for mut text in labels_q.iter_mut() {
         if available {
+            let next_multi = 1.20_f64.powi((rebirth.rebirth_count + 1) as i32);
             **text = format!(
-                "🔄 Rebirth\n+{} PP  (+{:.0}% perm)\nLv {}+ ✓",
-                pp_preview,
-                20.0 * (rebirth.rebirth_count + 1) as f32,
-                REBIRTH_THRESHOLD,
+                "🔄 Rebirth\n+{pp_preview} PP  (×{next_multi:.2} perm)\nLv {REBIRTH_THRESHOLD}+ ✓",
             );
         } else {
             **text = format!(
-                "🔄 Rebirth\nNeeds Lv {}+\n(you have Lv {})",
-                REBIRTH_THRESHOLD,
-                max_level,
+                "🔄 Rebirth\nNeeds Lv {REBIRTH_THRESHOLD}+\n(you have Lv {max_level})",
             );
         }
     }

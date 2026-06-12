@@ -37,10 +37,6 @@ pub struct TokenDisplay;
 #[derive(Component)]
 pub struct RebirthDisplay;
 
-/// Marker on the text showing unspent Paragon Points.
-#[derive(Component)]
-pub struct ParagonPointsDisplay;
-
 /// Identifies which Paragon upgrade a button / label belongs to.
 #[derive(Component, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ParagonKind {
@@ -52,6 +48,11 @@ pub enum ParagonKind {
 #[derive(Component)]
 pub struct RebirthButton;
 
+/// Marks the text label inside the Rebirth button so it can be updated to show
+/// availability, expected PP gain, and the permanent multiplier preview.
+#[derive(Component)]
+pub struct RebirthButtonLabel;
+
 /// Marks a Paragon upgrade button.
 #[derive(Component)]
 pub struct ParagonButton(pub ParagonKind);
@@ -59,6 +60,8 @@ pub struct ParagonButton(pub ParagonKind);
 /// Marks the text child of a Paragon button so its label can be updated.
 #[derive(Component)]
 pub struct ParagonLabel(pub ParagonKind);
+
+// ── Upgrade system ───────────────────────────────────────────────────────────
 
 /// Identifies which upgrade a button or label belongs to.
 #[derive(Component, Clone, Copy, PartialEq, Eq, Debug)]

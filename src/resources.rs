@@ -191,10 +191,10 @@ pub struct RebirthState {
 }
 
 impl RebirthState {
-    /// +20 % permanent Aura multiplier per rebirth (stacks multiplicatively with
-    /// other multipliers).
+    /// Permanently compounds Aura rate by ×1.20 per rebirth.
+    /// 1 rebirth → ×1.20, 2 → ×1.44, 5 → ×2.49, etc.
     pub fn rebirth_aura_multiplier(&self) -> f64 {
-        1.0 + 0.20 * self.rebirth_count as f64
+        1.20_f64.powi(self.rebirth_count as i32)
     }
 
     /// +30 % permanent Aura multiplier per Paragon Aura level.
