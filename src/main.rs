@@ -1,3 +1,42 @@
+use bevy::prelude::*;
+
+mod components;
+mod resources;
+mod systems;
+mod ui;
+
+use resources::{AuraPool, Grid, MergeTimer, SpawnTokens};
+use systems::{auto_merge, generate_aura, handle_input, regen_tokens, setup_camera, setup_grid};
+use ui::{setup_hud, update_hud};
+
 fn main() {
-    println!("Hello, world!");
+    App::new()
+        .add_plugins(DefaultPlugins.set(WindowPlugin {
+            primary_window: Some(Window {
+                title: "Neon Merge".into(),
+                resolution: (480., 720.).into(),
+                resizable: false,
+                ..default()
+            }),
+            ..default()
+        }))
+        .insert_resource(ClearColor(Color::srgb(0.04, 0.02, 0.10)))
+        .init_resource::<Grid>()
+        .init_resource::<AuraPool>()
+        .init_resource::<SpawnTokens>()
+        .init_resource::<MergeTimer>()
+        // Startup
+        .add_systems(Startup, (setup_camera, setup_grid, setup_hud))
+        // Every frame
+        .add_systems(
+            Update,
+            (
+                handle_input,
+                regen_tokens,
+                auto_merge,
+                generate_aura,
+                update_hud,
+            ),
+        )
+        .run();
 }
