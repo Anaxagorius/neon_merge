@@ -448,6 +448,7 @@ pub fn handle_rebirth(
         paragon_points: rebirth.paragon_points,
         paragon_aura_level: rebirth.paragon_aura_level,
         paragon_regen_level: rebirth.paragon_regen_level,
+        shapes: vec![],
     });
 }
 
