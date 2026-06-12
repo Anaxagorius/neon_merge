@@ -1,40 +1,82 @@
 use bevy::prelude::*;
 
-use crate::components::{GridPos, LabelEntity, ShapeLabel, ShapeLevel};
+use crate::components::{GridPos, LabelEntity, ShapeLabel, ShapeLevel, UpgradeButton, UpgradeKind};
 use crate::resources::{
-    grid_to_world, world_to_grid, AuraPool, Grid, MergeTimer, SpawnTokens, CELL_SIZE, GRID_COLS,
-    GRID_ROWS,
+    grid_to_world, world_to_grid, AuraPool, Grid, MergeTimer, SpawnTokens, UpgradeState, CELL_SIZE,
+    GRID_COLS, GRID_ROWS,
 };
 
 // ── Shape catalogue ───────────────────────────────────────────────────────────
 
-pub const MAX_LEVEL: u32 = 5;
+pub const MAX_LEVEL: u32 = 25;
 
-/// Human-readable name for each shape level.
+/// Human-readable name for each shape level (1–25).
 pub fn shape_name(level: u32) -> &'static str {
     match level {
-        1 => "Spark",
-        2 => "Crystal",
-        3 => "Prism",
-        4 => "Nova",
-        5 => "Singularity",
-        _ => "Unknown",
+        1  => "Spark",
+        2  => "Crystal",
+        3  => "Prism",
+        4  => "Nova",
+        5  => "Singularity",
+        6  => "Nebula",
+        7  => "Pulsar",
+        8  => "Quasar",
+        9  => "Vortex",
+        10 => "Zenith",
+        11 => "Rift",
+        12 => "Eclipse",
+        13 => "Aurora",
+        14 => "Inferno",
+        15 => "Cascade",
+        16 => "Apex",
+        17 => "Phantom",
+        18 => "Specter",
+        19 => "Radiance",
+        20 => "Celestial",
+        21 => "Ethereal",
+        22 => "Transcend",
+        23 => "Infinity",
+        24 => "Nexus",
+        25 => "Void",
+        _  => "Unknown",
     }
 }
 
-/// Neon colour for each shape level.
+/// Neon colour for each shape level (1–25).
 pub fn shape_color(level: u32) -> Color {
     match level {
-        1 => Color::srgb(0.10, 0.55, 1.00), // electric blue
-        2 => Color::srgb(0.00, 0.95, 0.90), // cyan
-        3 => Color::srgb(0.65, 0.10, 1.00), // deep purple
-        4 => Color::srgb(1.00, 0.10, 0.65), // hot pink
-        5 => Color::srgb(1.00, 0.82, 0.00), // gold
-        _ => Color::WHITE,
+        1  => Color::srgb(0.10, 0.55, 1.00), // electric blue
+        2  => Color::srgb(0.00, 0.95, 0.90), // cyan
+        3  => Color::srgb(0.65, 0.10, 1.00), // deep purple
+        4  => Color::srgb(1.00, 0.10, 0.65), // hot pink
+        5  => Color::srgb(1.00, 0.82, 0.00), // gold
+        6  => Color::srgb(0.20, 1.00, 0.40), // neon green
+        7  => Color::srgb(1.00, 0.45, 0.00), // neon orange
+        8  => Color::srgb(0.50, 0.00, 1.00), // violet
+        9  => Color::srgb(0.00, 0.70, 1.00), // sky blue
+        10 => Color::srgb(1.00, 1.00, 0.30), // bright yellow
+        11 => Color::srgb(1.00, 0.20, 0.20), // red-orange
+        12 => Color::srgb(0.30, 1.00, 0.80), // aquamarine
+        13 => Color::srgb(0.80, 0.00, 0.80), // magenta
+        14 => Color::srgb(0.60, 1.00, 0.00), // chartreuse
+        15 => Color::srgb(0.00, 0.40, 1.00), // royal blue
+        16 => Color::srgb(1.00, 0.60, 0.80), // light pink
+        17 => Color::srgb(0.40, 0.80, 0.00), // olive green
+        18 => Color::srgb(1.00, 0.30, 0.30), // coral
+        19 => Color::srgb(0.20, 0.80, 1.00), // ice blue
+        20 => Color::srgb(0.90, 0.50, 1.00), // lavender
+        21 => Color::srgb(1.00, 0.70, 0.10), // amber
+        22 => Color::srgb(0.00, 1.00, 0.60), // mint
+        23 => Color::srgb(0.70, 0.20, 1.00), // indigo
+        24 => Color::srgb(1.00, 0.95, 0.70), // warm white
+        25 => Color::srgb(1.00, 1.00, 1.00), // pure white (Void)
+        _  => Color::WHITE,
     }
 }
 
 /// Aura generated per second by a shape of this level.
+/// Levels 1–5 are tuned by hand; 6–25 follow a ×4 exponential curve.
+/// Levels above MAX_LEVEL are unreachable in normal gameplay but return 0.0.
 pub fn aura_rate(level: u32) -> f64 {
     match level {
         1 => 0.1,
@@ -42,6 +84,7 @@ pub fn aura_rate(level: u32) -> f64 {
         3 => 1.5,
         4 => 6.0,
         5 => 25.0,
+        6..=MAX_LEVEL => 0.1 * 4.0f64.powi(level as i32 - 1),
         _ => 0.0,
     }
 }
@@ -251,10 +294,56 @@ pub fn auto_merge(
 pub fn generate_aura(
     time: Res<Time>,
     mut aura: ResMut<AuraPool>,
+    upgrades: Res<UpgradeState>,
     shapes_q: Query<&ShapeLevel>,
 ) {
     let dt = time.delta_secs_f64();
-    let total_rate: f64 = shapes_q.iter().map(|sl| aura_rate(sl.0)).sum();
+    let base_rate: f64 = shapes_q.iter().map(|sl| aura_rate(sl.0)).sum();
+    let total_rate = base_rate * upgrades.aura_multiplier();
     aura.rate = total_rate;
     aura.total += total_rate * dt;
+}
+
+// ── Upgrade purchases ─────────────────────────────────────────────────────────
+
+pub fn handle_upgrades(
+    interaction_q: Query<(&Interaction, &UpgradeButton), Changed<Interaction>>,
+    mut aura: ResMut<AuraPool>,
+    mut upgrades: ResMut<UpgradeState>,
+    mut tokens: ResMut<SpawnTokens>,
+    mut merge_timer: ResMut<MergeTimer>,
+) {
+    for (interaction, btn) in interaction_q.iter() {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        match btn.0 {
+            UpgradeKind::AuraMultiplier => {
+                let cost = upgrades.aura_multi_cost();
+                if aura.total >= cost {
+                    aura.total -= cost;
+                    upgrades.aura_multi_level += 1;
+                }
+            }
+            UpgradeKind::TokenCapacity => {
+                let cost = upgrades.token_cap_cost();
+                if aura.total >= cost {
+                    aura.total -= cost;
+                    upgrades.token_cap_level += 1;
+                    tokens.max = upgrades.token_capacity();
+                }
+            }
+            UpgradeKind::MergeSpeed => {
+                let cost = upgrades.merge_speed_cost();
+                if aura.total >= cost {
+                    aura.total -= cost;
+                    upgrades.merge_speed_level += 1;
+                    merge_timer.0 = Timer::from_seconds(
+                        upgrades.merge_interval(),
+                        TimerMode::Repeating,
+                    );
+                }
+            }
+        }
+    }
 }

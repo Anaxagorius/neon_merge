@@ -5,9 +5,9 @@ mod resources;
 mod systems;
 mod ui;
 
-use resources::{AuraPool, Grid, MergeTimer, SpawnTokens};
-use systems::{auto_merge, generate_aura, handle_input, regen_tokens, setup_camera, setup_grid};
-use ui::{setup_hud, update_hud};
+use resources::{AuraPool, Grid, MergeTimer, SpawnTokens, UpgradeState};
+use systems::{auto_merge, generate_aura, handle_input, handle_upgrades, regen_tokens, setup_camera, setup_grid};
+use ui::{setup_hud, update_hud, update_upgrade_panel};
 
 fn main() {
     App::new()
@@ -25,6 +25,7 @@ fn main() {
         .init_resource::<AuraPool>()
         .init_resource::<SpawnTokens>()
         .init_resource::<MergeTimer>()
+        .init_resource::<UpgradeState>()
         // Startup
         .add_systems(Startup, (setup_camera, setup_grid, setup_hud))
         // Every frame
@@ -35,7 +36,9 @@ fn main() {
                 regen_tokens,
                 auto_merge,
                 generate_aura,
+                handle_upgrades,
                 update_hud,
+                update_upgrade_panel,
             ),
         )
         .run();

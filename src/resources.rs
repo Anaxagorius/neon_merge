@@ -130,3 +130,62 @@ impl Default for MergeTimer {
         MergeTimer(Timer::from_seconds(0.35, TimerMode::Repeating))
     }
 }
+
+// ── Upgrade state ─────────────────────────────────────────────────────────────
+
+/// Tracks the level of each purchased upgrade.
+#[derive(Resource, Default)]
+pub struct UpgradeState {
+    pub aura_multi_level: u32,
+    pub token_cap_level: u32,
+    pub merge_speed_level: u32,
+}
+
+impl UpgradeState {
+    pub fn aura_multi_cost(&self) -> f64 {
+        50.0 * 5.0f64.powi(self.aura_multi_level as i32)
+    }
+    pub fn token_cap_cost(&self) -> f64 {
+        25.0 * 4.0f64.powi(self.token_cap_level as i32)
+    }
+    pub fn merge_speed_cost(&self) -> f64 {
+        30.0 * 6.0f64.powi(self.merge_speed_level as i32)
+    }
+    pub fn aura_multiplier(&self) -> f64 {
+        1.0 + 0.5 * self.aura_multi_level as f64
+    }
+    pub fn next_aura_multiplier(&self) -> f64 {
+        1.0 + 0.5 * (self.aura_multi_level + 1) as f64
+    }
+    pub fn token_capacity(&self) -> f32 {
+        10.0 + 5.0 * self.token_cap_level as f32
+    }
+    pub fn next_token_capacity(&self) -> f32 {
+        10.0 + 5.0 * (self.token_cap_level + 1) as f32
+    }
+    pub fn merge_interval(&self) -> f32 {
+        Self::merge_interval_at(self.merge_speed_level)
+    }
+    pub fn merge_interval_at(level: u32) -> f32 {
+        (0.35 / (1.0 + 0.3 * level as f32)).max(0.05)
+    }
+}
+
+// ── Large-number formatter ────────────────────────────────────────────────────
+
+/// Formats an aura value with appropriate suffix (K, M, B, T, Qa).
+pub fn fmt_aura(value: f64) -> String {
+    if value >= 1e15 {
+        format!("{:.2}Qa", value / 1e15)
+    } else if value >= 1e12 {
+        format!("{:.2}T", value / 1e12)
+    } else if value >= 1e9 {
+        format!("{:.2}B", value / 1e9)
+    } else if value >= 1e6 {
+        format!("{:.2}M", value / 1e6)
+    } else if value >= 1e3 {
+        format!("{:.1}K", value / 1e3)
+    } else {
+        format!("{:.1}", value)
+    }
+}
