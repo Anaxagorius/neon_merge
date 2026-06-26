@@ -1,6 +1,6 @@
 use bevy::core_pipeline::bloom::Bloom;
 use bevy::prelude::*;
-use bevy::render::mesh::components::Mesh2d;
+use bevy::render::mesh::Mesh2d;
 use bevy::sprite::{ColorMaterial, MeshMaterial2d};
 use bevy::math::primitives::{Circle as CirclePrimitive, RegularPolygon, Rectangle as RectanglePrimitive, Ellipse};
 
@@ -431,81 +431,93 @@ pub fn handle_drag_end(
     let target_cell = world_to_grid(world_pos);
 
     // Get dragged shape info
-    let Ok((shape_level, label_entity)) = shape_queries.p0().get(drag_info.entity) else {
-        return;
+    let (dragged_level, dragged_label_entity) = {
+        let shape_info_q = shape_queries.p0();
+        let Ok((shape_level, label_entity)) = shape_info_q.get(drag_info.entity) else {
+            return;
+        };
+        (shape_level.0, label_entity.0)
     };
-    let dragged_level = shape_level.0;
-    let dragged_label_entity = label_entity.0;
 
     if let Some((target_col, target_row)) = target_cell {
         // Check if target cell has a shape
         if let Some(target_entity) = grid.get(target_col, target_row) {
             // Try to merge
-            if let Ok((target_level, target_label)) = shape_queries.p0().get(target_entity) {
-                if target_level.0 == dragged_level && dragged_level < MAX_LEVEL {
-                    // Merge! Despawn dragged shape and its label
-                    commands.entity(dragged_label_entity).despawn();
-                    commands.entity(drag_info.entity).despawn();
-
-                    // Upgrade target in place
-                    let new_level = dragged_level + 1;
-                    let new_color = shape_color(new_level);
-                    let new_color_linear: LinearRgba = new_color.to_linear();
-
-                    // Despawn old target label
-                    commands.entity(target_label.0).despawn();
-
-                    // Spawn new label for upgraded level
-                    let world = grid_to_world(target_col, target_row);
-                    let new_label = commands
-                        .spawn((
-                            Text2d::new(new_level.to_string()),
-                            TextFont {
-                                font_size: 26.0,
-                                ..default()
-                            },
-                            TextColor(Color::WHITE),
-                            Transform::from_xyz(world.x, world.y, 2.0),
-                            ShapeLabel,
-                        ))
-                        .id();
-
-                    // Update target shape
-                    let new_mesh = meshes.add(shape_mesh(new_level));
-                    let new_material = materials.add(ColorMaterial {
-                        color: Color::linear_rgb(3.5, 3.5, 3.5), // HDR white flash
-                        ..default()
-                    });
-
-                    commands.entity(target_entity).insert((
-                        Mesh2d(new_mesh),
-                        MeshMaterial2d(new_material),
-                        ShapeLevel(new_level),
-                        LabelEntity(new_label),
-                        MergeFlash {
-                            timer: Timer::from_seconds(0.35, TimerMode::Once),
-                            base_color: new_color_linear,
-                        },
-                    ));
-
-                    // Add visual effects for special tiers
-                    if new_level >= 26 && new_level <= 45 {
-                        commands.entity(target_entity).insert(PulseEffect {
-                            timer: Timer::from_seconds(1.5, TimerMode::Repeating),
-                            base_scale: 1.0,
-                        });
-                    } else if new_level >= 46 {
-                        commands.entity(target_entity).insert(GlowEffect {
-                            timer: Timer::from_seconds(2.0, TimerMode::Repeating),
-                        });
+            let target_label_entity = {
+                let shape_info_q = shape_queries.p0();
+                match shape_info_q.get(target_entity) {
+                    Ok((target_level, target_label))
+                        if target_level.0 == dragged_level && dragged_level < MAX_LEVEL =>
+                    {
+                        Some(target_label.0)
                     }
-
-                    return; // Merge complete
+                    _ => None,
                 }
+            };
+            if let Some(target_label_entity) = target_label_entity {
+                // Merge! Despawn dragged shape and its label
+                commands.entity(dragged_label_entity).despawn();
+                commands.entity(drag_info.entity).despawn();
+
+                // Upgrade target in place
+                let new_level = dragged_level + 1;
+                let new_color = shape_color(new_level);
+                let new_color_linear: LinearRgba = new_color.to_linear();
+
+                // Despawn old target label
+                commands.entity(target_label_entity).despawn();
+
+                // Spawn new label for upgraded level
+                let world = grid_to_world(target_col, target_row);
+                let new_label = commands
+                    .spawn((
+                        Text2d::new(new_level.to_string()),
+                        TextFont {
+                            font_size: 26.0,
+                            ..default()
+                        },
+                        TextColor(Color::WHITE),
+                        Transform::from_xyz(world.x, world.y, 2.0),
+                        ShapeLabel,
+                    ))
+                    .id();
+
+                // Update target shape
+                let new_mesh = meshes.add(shape_mesh(new_level));
+                let new_material = materials.add(ColorMaterial {
+                    color: Color::linear_rgb(3.5, 3.5, 3.5), // HDR white flash
+                    ..default()
+                });
+
+                commands.entity(target_entity).insert((
+                    Mesh2d(new_mesh),
+                    MeshMaterial2d(new_material),
+                    ShapeLevel(new_level),
+                    LabelEntity(new_label),
+                    MergeFlash {
+                        timer: Timer::from_seconds(0.35, TimerMode::Once),
+                        base_color: new_color_linear,
+                    },
+                ));
+
+                // Add visual effects for special tiers
+                if new_level >= 26 && new_level <= 45 {
+                    commands.entity(target_entity).insert(PulseEffect {
+                        timer: Timer::from_seconds(1.5, TimerMode::Repeating),
+                        base_scale: 1.0,
+                    });
+                } else if new_level >= 46 {
+                    commands.entity(target_entity).insert(GlowEffect {
+                        timer: Timer::from_seconds(2.0, TimerMode::Repeating),
+                    });
+                }
+
+                return; // Merge complete
             }
         } else if Grid::in_bounds(target_col, target_row) {
             // Target cell is empty and in bounds - place shape there
-            let Ok((_, _, mut grid_pos, mut transform)) = shape_queries.p1().get_mut(drag_info.entity) else {
+            let mut dragged_shape_q = shape_queries.p1();
+            let Ok((_, _, mut grid_pos, mut transform)) = dragged_shape_q.get_mut(drag_info.entity) else {
                 return;
             };
             let world = grid_to_world(target_col, target_row);
@@ -526,7 +538,8 @@ pub fn handle_drag_end(
     }
 
     // If we get here, snap back to original position
-    let Ok((_, _, _, mut transform)) = shape_queries.p1().get_mut(drag_info.entity) else {
+    let mut dragged_shape_q = shape_queries.p1();
+    let Ok((_, _, _, mut transform)) = dragged_shape_q.get_mut(drag_info.entity) else {
         return;
     };
     let world = grid_to_world(drag_info.original_col, drag_info.original_row);
