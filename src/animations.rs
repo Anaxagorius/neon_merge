@@ -117,10 +117,12 @@ pub fn animate_glow(
         // Cycle through green spectrum: green → cyan → green
         if let Some(material) = materials.get_mut(&material_handle.0) {
             let hue = 120.0 + 60.0 * (t * std::f32::consts::TAU).sin(); // 90-150 degrees (green-cyan range)
-            material.color = Color::hsl(hue, 0.8, 0.6).with_linear_rgb(
-                material.color.to_linear().red * 4.0,
-                material.color.to_linear().green * 4.0,
-                material.color.to_linear().blue * 4.0,
+            let glow_color = Color::hsl(hue, 0.8, 0.6).to_linear();
+            material.color = Color::linear_rgba(
+                glow_color.red * 4.0,
+                glow_color.green * 4.0,
+                glow_color.blue * 4.0,
+                glow_color.alpha,
             );
         }
     }

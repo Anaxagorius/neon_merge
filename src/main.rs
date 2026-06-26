@@ -7,7 +7,7 @@ mod save;
 mod systems;
 mod ui;
 
-use animations::{animate_merge_flash, animate_spawn_pop, animate_pulse, animate_glow, PulseEffect, GlowEffect};
+use animations::{animate_glow, animate_merge_flash, animate_pulse, animate_spawn_pop};
 use resources::{GoldPool, Grid, DragState, ShopState, RebirthState, UpgradeState};
 use save::{auto_save, load_game, AutoSaveTimer};
 use systems::{
