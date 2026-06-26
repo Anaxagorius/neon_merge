@@ -234,7 +234,7 @@ fn shape_mesh(level: u32) -> Mesh {
         25 => Mesh::from(RegularPolygon::new(32.0, 3)), // Scalene
         // 3D shapes: cycle through 3-8 sides
         26..=45 => {
-            let sides = 3 + ((level - 26) % 6) as usize;
+            let sides = 3 + ((level - 26) % 6);
             Mesh::from(RegularPolygon::new(32.0, sides))
         }
         // Prestige shapes
@@ -401,6 +401,7 @@ pub fn handle_drag_end(
     mut grid: ResMut<Grid>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
+    mut label_transforms_q: Query<&mut Transform, With<ShapeLabel>>,
     mut shapes_q: Query<(&ShapeLevel, &LabelEntity, &mut GridPos, &mut Transform)>,
 ) {
     if !mouse.just_released(MouseButton::Left) {
@@ -509,9 +510,7 @@ pub fn handle_drag_end(
             grid.insert(target_col, target_row, drag_info.entity);
 
             // Update label position
-            if let Ok(mut label_transform) = commands.get_entity(label_entity.0).and_then(|mut e| {
-                e.get_mut::<Transform>()
-            }) {
+            if let Ok(mut label_transform) = label_transforms_q.get_mut(label_entity.0) {
                 label_transform.translation.x = world.x;
                 label_transform.translation.y = world.y;
             }
