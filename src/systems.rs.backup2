@@ -3,6 +3,7 @@ use bevy::prelude::*;
 use bevy::sprite::{ColorMaterial, Mesh2d, MeshMaterial2d};
 use bevy::math::primitives::{Circle as CirclePrimitive, RegularPolygon, Rectangle as RectanglePrimitive, Ellipse};
 use std::f32::consts::PI;
+use rand::Rng;
 
 use crate::animations::{MergeFlash, SpawnPop, PulseEffect, GlowEffect};
 use crate::components::{GridPos, LabelEntity, ParagonButton, ParagonKind, RebirthButton, ShapeLabel, ShapeLevel, UpgradeButton, UpgradeKind, ShopButton};
@@ -309,21 +310,18 @@ pub fn spawn_shape(
     shape_entity
 }
 
-// ── Drag-to-merge ─────────────────────────────────────────────────────────────
+// ── Input: click to spawn ─────────────────────────────────────────────────────
 
-pub fn handle_drag_start(
+pub fn handle_input(
+    mut commands: Commands,
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
     camera_q: Query<(&Camera, &GlobalTransform), With<Camera2d>>,
-    mut drag_state: ResMut<DragState>,
     mut grid: ResMut<Grid>,
-    shapes_q: Query<(&GridPos, &Transform)>,
+    mut tokens: ResMut<SpawnTokens>,
 ) {
     if !mouse.just_pressed(MouseButton::Left) {
         return;
-    }
-    if drag_state.dragging.is_some() {
-        return; // Already dragging
     }
 
     let Ok(window) = windows.get_single() else {
@@ -342,275 +340,147 @@ pub fn handle_drag_start(
         return;
     };
 
-    // Check if there's a shape at this cell
-    if let Some(entity) = grid.get(col, row) {
-        if let Ok((grid_pos, transform)) = shapes_q.get(entity) {
-            let shape_world = Vec2::new(transform.translation.x, transform.translation.y);
-            let offset = world_pos - shape_world;
-            
-            // Remove from grid temporarily (cell appears free while dragging)
-            grid.remove(col, row);
-            
-            drag_state.dragging = Some(DragInfo {
-                entity,
-                original_col: grid_pos.col,
-                original_row: grid_pos.row,
-                offset,
-            });
-        }
+    if !grid.is_empty(col, row) {
+        return; // cell already occupied
     }
+    if tokens.current < 1.0 {
+        return; // no tokens available
+    }
+
+    tokens.current -= 1.0;
+    spawn_shape(&mut commands, &mut grid, col, row, 1);
 }
 
-pub fn handle_drag_update(
-    windows: Query<&Window>,
-    camera_q: Query<(&Camera, &GlobalTransform), With<Camera2d>>,
-    drag_state: Res<DragState>,
-    mut shapes_q: Query<&mut Transform>,
-) {
-    let Some(ref drag_info) = drag_state.dragging else {
-        return;
-    };
+// ── Token regeneration ────────────────────────────────────────────────────────
 
-    let Ok(window) = windows.get_single() else {
-        return;
-    };
-    let Ok((camera, cam_xf)) = camera_q.get_single() else {
-        return;
-    };
-    let Some(cursor) = window.cursor_position() else {
-        return;
-    };
-    let Ok(world_pos) = camera.viewport_to_world_2d(cam_xf, cursor) else {
-        return;
-    };
-
-    // Update dragged shape position (follow cursor with offset)
-    if let Ok(mut transform) = shapes_q.get_mut(drag_info.entity) {
-        transform.translation.x = world_pos.x - drag_info.offset.x;
-        transform.translation.y = world_pos.y - drag_info.offset.y;
-        transform.translation.z = 5.0; // Lift above other shapes
-    }
-}
-
-pub fn handle_drag_end(
-    mut commands: Commands,
-    mouse: Res<ButtonInput<MouseButton>>,
-    windows: Query<&Window>,
-    camera_q: Query<(&Camera, &GlobalTransform), With<Camera2d>>,
-    mut drag_state: ResMut<DragState>,
-    mut grid: ResMut<Grid>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
-    mut shapes_q: Query<(&ShapeLevel, &LabelEntity, &mut GridPos, &mut Transform)>,
-) {
-    if !mouse.just_released(MouseButton::Left) {
-        return;
-    }
-    
-    let Some(drag_info) = drag_state.dragging.take() else {
-        return;
-    };
-
-    let Ok(window) = windows.get_single() else {
-        return;
-    };
-    let Ok((camera, cam_xf)) = camera_q.get_single() else {
-        return;
-    };
-    let Some(cursor) = window.cursor_position() else {
-        return;
-    };
-    let Ok(world_pos) = camera.viewport_to_world_2d(cam_xf, cursor) else {
-        return;
-    };
-    
-    let target_cell = world_to_grid(world_pos);
-
-    // Get dragged shape info
-    let Ok((shape_level, label_entity, mut grid_pos, mut transform)) = shapes_q.get_mut(drag_info.entity) else {
-        return;
-    };
-    let dragged_level = shape_level.0;
-
-    if let Some((target_col, target_row)) = target_cell {
-        // Check if target cell has a shape
-        if let Some(target_entity) = grid.get(target_col, target_row) {
-            // Try to merge
-            if let Ok((target_level, target_label, _, _)) = shapes_q.get(target_entity) {
-                if target_level.0 == dragged_level && dragged_level < MAX_LEVEL {
-                    // Merge! Despawn dragged shape and its label
-                    commands.entity(label_entity.0).despawn();
-                    commands.entity(drag_info.entity).despawn();
-
-                    // Upgrade target in place
-                    let new_level = dragged_level + 1;
-                    let new_color = shape_color(new_level);
-                    let new_color_linear: LinearRgba = new_color.to_linear();
-
-                    // Despawn old target label
-                    commands.entity(target_label.0).despawn();
-
-                    // Spawn new label for upgraded level
-                    let world = grid_to_world(target_col, target_row);
-                    let new_label = commands
-                        .spawn((
-                            Text2d::new(new_level.to_string()),
-                            TextFont {
-                                font_size: 26.0,
-                                ..default()
-                            },
-                            TextColor(Color::WHITE),
-                            Transform::from_xyz(world.x, world.y, 2.0),
-                            ShapeLabel,
-                        ))
-                        .id();
-
-                    // Update target shape
-                    let new_mesh = meshes.add(shape_mesh(new_level));
-                    let new_material = materials.add(ColorMaterial {
-                        color: Color::linear_rgb(3.5, 3.5, 3.5), // HDR white flash
-                        ..default()
-                    });
-
-                    commands.entity(target_entity).insert((
-                        Mesh2d(new_mesh),
-                        MeshMaterial2d(new_material),
-                        ShapeLevel(new_level),
-                        LabelEntity(new_label),
-                        MergeFlash {
-                            timer: Timer::from_seconds(0.35, TimerMode::Once),
-                            base_color: new_color_linear,
-                        },
-                    ));
-
-                    // Add visual effects for special tiers
-                    if new_level >= 26 && new_level <= 45 {
-                        commands.entity(target_entity).insert(PulseEffect {
-                            timer: Timer::from_seconds(1.5, TimerMode::Repeating),
-                            base_scale: 1.0,
-                        });
-                    } else if new_level >= 46 {
-                        commands.entity(target_entity).insert(GlowEffect {
-                            timer: Timer::from_seconds(2.0, TimerMode::Repeating),
-                        });
-                    }
-
-                    return; // Merge complete
-                }
-            }
-        } else if Grid::in_bounds(target_col, target_row) {
-            // Target cell is empty and in bounds - place shape there
-            let world = grid_to_world(target_col, target_row);
-            transform.translation.x = world.x;
-            transform.translation.y = world.y;
-            transform.translation.z = 1.0;
-            grid_pos.col = target_col;
-            grid_pos.row = target_row;
-            grid.insert(target_col, target_row, drag_info.entity);
-
-            // Update label position
-            if let Ok(mut label_transform) = commands.get_entity(label_entity.0).and_then(|mut e| {
-                e.get_mut::<Transform>()
-            }) {
-                label_transform.translation.x = world.x;
-                label_transform.translation.y = world.y;
-            }
-            return;
-        }
-    }
-
-    // If we get here, snap back to original position
-    let world = grid_to_world(drag_info.original_col, drag_info.original_row);
-    transform.translation.x = world.x;
-    transform.translation.y = world.y;
-    transform.translation.z = 1.0;
-    grid.insert(drag_info.original_col, drag_info.original_row, drag_info.entity);
-}
-
-// ── Shop system ───────────────────────────────────────────────────────────────
-
-pub fn handle_shop_purchase(
-    interaction_q: Query<(&Interaction, &ShopButton), Changed<Interaction>>,
-    mut gold: ResMut<GoldPool>,
-    mut shop: ResMut<ShopState>,
-    mut grid: ResMut<Grid>,
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
-) {
-    for (interaction, btn) in interaction_q.iter() {
-        if *interaction != Interaction::Pressed {
-            continue;
-        }
-
-        let slot_index = btn.0;
-        if slot_index >= shop.available_levels.len() {
-            continue;
-        }
-
-        let level = shop.available_levels[slot_index];
-        let cost = shape_shop_cost(level);
-
-        if gold.total >= cost {
-            gold.total -= cost;
-
-            // Find first empty cell (scan bottom-left to top-right)
-            let mut spawn_cell = None;
-            'outer: for row in 0..GRID_ROWS {
-                for col in 0..GRID_COLS {
-                    if grid.is_empty(col, row) {
-                        spawn_cell = Some((col, row));
-                        break 'outer;
-                    }
-                }
-            }
-
-            if let Some((col, row)) = spawn_cell {
-                spawn_shape(&mut commands, &mut meshes, &mut materials, &mut grid, col, row, level);
-            }
-
-            // Refresh this shop slot with a new random level
-            // Weighted: 70% level 1, 20% level 2, 10% level 3+ (up to unlocked max)
-            let max_unlocked = 3; // TODO: Could make this dynamic based on player progress
-            let roll = rand::random::<f32>();
-            let new_level = if roll < 0.7 {
-                1
-            } else if roll < 0.9 {
-                2
-            } else {
-                (rand::random::<u32>() % max_unlocked.min(MAX_LEVEL)).max(1)
-            };
-            shop.available_levels[slot_index] = new_level;
-        }
-    }
-}
-
-// ── Gold generation ───────────────────────────────────────────────────────────
-
-pub fn generate_gold(
+pub fn regen_tokens(
     time: Res<Time>,
-    mut gold: ResMut<GoldPool>,
+    mut tokens: ResMut<SpawnTokens>,
+    rebirth: Res<RebirthState>,
+) {
+    let rate = tokens.regen_rate + rebirth.paragon_regen_bonus();
+    tokens.current = (tokens.current + rate * time.delta_secs()).min(tokens.max);
+}
+
+// ── Auto-merge adjacent same-level pairs ──────────────────────────────────────
+
+pub fn auto_merge(
+    mut commands: Commands,
+    mut grid: ResMut<Grid>,
+    time: Res<Time>,
+    mut merge_timer: ResMut<MergeTimer>,
+    shapes_q: Query<(&ShapeLevel, &LabelEntity)>,
+) {
+    merge_timer.0.tick(time.delta());
+    if !merge_timer.0.just_finished() {
+        return;
+    }
+
+    // Collect occupied cells with level and label ID.
+    let occupied: Vec<((i32, i32), Entity, u32, Entity)> = grid
+        .cells
+        .iter()
+        .filter_map(|(&pos, &entity)| {
+            shapes_q
+                .get(entity)
+                .ok()
+                .map(|(sl, le)| (pos, entity, sl.0, le.0))
+        })
+        .collect();
+
+    // Find the first mergeable pair: adjacent cells with the same level < MAX.
+    for &((col_a, row_a), entity_a, level_a, label_a) in &occupied {
+        if level_a >= MAX_LEVEL {
+            continue;
+        }
+        for (col_b, row_b) in Grid::neighbours(col_a, row_a) {
+            if let Some(&entity_b) = grid.cells.get(&(col_b, row_b)) {
+                let Ok((sl_b, label_b_ref)) = shapes_q.get(entity_b) else {
+                    continue;
+                };
+                if sl_b.0 != level_a {
+                    continue;
+                }
+
+                let new_level = level_a + 1;
+                let new_color = shape_color(new_level);
+                // shape_color returns Color::linear_rgb, so to_linear() is a
+                // direct extraction of the already-linear values — no conversion
+                // needed, but it gives us the LinearRgba struct MergeFlash needs.
+                let new_color_linear: LinearRgba = new_color.to_linear();
+
+                // Despawn entity_b and its label (O(1) — ID stored directly).
+                commands.entity(label_b_ref.0).despawn();
+                commands.entity(entity_b).despawn();
+                grid.remove(col_b, row_b);
+
+                // Despawn the old label for entity_a.
+                commands.entity(label_a).despawn();
+
+                // Spawn a new label for the upgraded level.
+                let world = grid_to_world(col_a, row_a);
+                let new_label = commands
+                    .spawn((
+                        Text2d::new(new_level.to_string()),
+                        TextFont {
+                            font_size: 26.0,
+                            ..default()
+                        },
+                        TextColor(Color::WHITE),
+                        Transform::from_xyz(world.x, world.y, 2.0),
+                        ShapeLabel,
+                    ))
+                    .id();
+
+                // Upgrade entity_a in place; start with a white flash that fades
+                // to the new neon colour over 0.35 s.
+                commands.entity(entity_a).insert((
+                    ShapeLevel(new_level),
+                    Sprite {
+                        color: Color::linear_rgb(3.5, 3.5, 3.5), // HDR white flash
+                        custom_size: Some(Vec2::splat(CELL_SIZE - 6.0)),
+                        ..default()
+                    },
+                    LabelEntity(new_label),
+                    MergeFlash {
+                        timer: Timer::from_seconds(0.35, TimerMode::Once),
+                        base_color: new_color_linear,
+                    },
+                ));
+
+                return; // one merge per tick
+            }
+        }
+    }
+}
+
+// ── Aura generation ───────────────────────────────────────────────────────────
+
+pub fn generate_aura(
+    time: Res<Time>,
+    mut aura: ResMut<AuraPool>,
     upgrades: Res<UpgradeState>,
     rebirth: Res<RebirthState>,
     shapes_q: Query<&ShapeLevel>,
 ) {
     let dt = time.delta_secs_f64();
-    let base_rate: f64 = shapes_q.iter().map(|sl| gold_rate(sl.0)).sum();
+    let base_rate: f64 = shapes_q.iter().map(|sl| aura_rate(sl.0)).sum();
     let total_rate = base_rate
         * upgrades.aura_multiplier()
-        * rebirth.rebirth_gold_multiplier()
+        * rebirth.rebirth_aura_multiplier()
         * rebirth.paragon_aura_multiplier();
-    gold.rate = total_rate;
-    gold.total += total_rate * dt;
-    gold.total_gold_earned += total_rate * dt;
+    aura.rate = total_rate;
+    aura.total += total_rate * dt;
 }
 
 // ── Upgrade purchases ─────────────────────────────────────────────────────────
 
 pub fn handle_upgrades(
     interaction_q: Query<(&Interaction, &UpgradeButton), Changed<Interaction>>,
-    mut gold: ResMut<GoldPool>,
+    mut aura: ResMut<AuraPool>,
     mut upgrades: ResMut<UpgradeState>,
+    mut tokens: ResMut<SpawnTokens>,
+    mut merge_timer: ResMut<MergeTimer>,
 ) {
     for (interaction, btn) in interaction_q.iter() {
         if *interaction != Interaction::Pressed {
@@ -619,16 +489,29 @@ pub fn handle_upgrades(
         match btn.0 {
             UpgradeKind::AuraMultiplier => {
                 let cost = upgrades.aura_multi_cost();
-                if gold.total >= cost {
-                    gold.total -= cost;
+                if aura.total >= cost {
+                    aura.total -= cost;
                     upgrades.aura_multi_level += 1;
                 }
             }
             UpgradeKind::TokenCapacity => {
-                // Legacy upgrade - no longer used, but kept for UI compatibility
+                let cost = upgrades.token_cap_cost();
+                if aura.total >= cost {
+                    aura.total -= cost;
+                    upgrades.token_cap_level += 1;
+                    tokens.max = upgrades.token_capacity();
+                }
             }
             UpgradeKind::MergeSpeed => {
-                // Legacy upgrade - no longer used (no auto-merge timer)
+                let cost = upgrades.merge_speed_cost();
+                if aura.total >= cost {
+                    aura.total -= cost;
+                    upgrades.merge_speed_level += 1;
+                    merge_timer.0 = Timer::from_seconds(
+                        upgrades.merge_interval(),
+                        TimerMode::Repeating,
+                    );
+                }
             }
         }
     }
@@ -638,36 +521,35 @@ pub fn handle_upgrades(
 
 /// Triggered when the player presses the Rebirth button.
 ///
-/// Requirements: total_gold_earned >= rebirth threshold.
-/// On success the grid is cleared, session resources are reset, and the rebirth
-/// count / Paragon Points are updated.
+/// Requirements: at least one shape on the grid must be at level ≥
+/// `REBIRTH_THRESHOLD`.  On success the grid is cleared, session resources are
+/// reset, and the rebirth count / Paragon Points are updated.
 pub fn handle_rebirth(
     mut commands: Commands,
     interaction_q: Query<&Interaction, (Changed<Interaction>, With<RebirthButton>)>,
     mut grid: ResMut<Grid>,
     shapes_q: Query<(&ShapeLevel, &LabelEntity)>,
-    mut gold: ResMut<GoldPool>,
+    mut aura: ResMut<AuraPool>,
+    mut tokens: ResMut<SpawnTokens>,
     mut upgrades: ResMut<UpgradeState>,
     mut rebirth: ResMut<RebirthState>,
+    mut merge_timer: ResMut<MergeTimer>,
 ) {
     if interaction_q.iter().all(|i| *i != Interaction::Pressed) {
         return;
     }
 
-    // Check if we've earned enough gold
-    let threshold = rebirth.rebirth_gold_requirement();
-    if gold.total_gold_earned < threshold {
-        return; // Threshold not met
+    // Determine the highest level shape currently on the grid.
+    let max_level = shapes_q.iter().map(|(sl, _)| sl.0).max().unwrap_or(0);
+    if max_level < REBIRTH_THRESHOLD {
+        return; // threshold not met — button press is ignored
     }
 
-    // Determine the highest level shape currently on the grid (for PP calculation)
-    let max_level = shapes_q.iter().map(|(sl, _)| sl.0).max().unwrap_or(0);
-
-    // Award Paragon Points and advance the rebirth counter
+    // Award Paragon Points and advance the rebirth counter.
     rebirth.paragon_points += RebirthState::pp_earned(max_level);
     rebirth.rebirth_count += 1;
 
-    // Despawn every shape entity (and its floating label) then clear the grid
+    // Despawn every shape entity (and its floating label) then clear the grid.
     for &entity in grid.cells.values() {
         if let Ok((_, label)) = shapes_q.get(entity) {
             commands.entity(label.0).despawn();
@@ -676,24 +558,25 @@ pub fn handle_rebirth(
     }
     grid.cells.clear();
 
-    // Reset all session-scoped resources to their defaults
-    let reset_gold = GoldPool {
-        total: 10.0,
-        rate: 0.0,
-        total_gold_earned: gold.total_gold_earned, // Preserve lifetime total!
-    };
-    *gold = reset_gold;
-    *upgrades = UpgradeState::default();
+    // Reset all session-scoped resources to their defaults.
+    *aura = AuraPool::default();
+    let reset_upgrades = UpgradeState::default();
+    tokens.max = reset_upgrades.token_capacity();
+    tokens.current = tokens.current.min(tokens.max);
+    tokens.regen_rate = SpawnTokens::default().regen_rate;
+    *upgrades = reset_upgrades;
+    *merge_timer = MergeTimer::default();
 
-    // Persist progress immediately after the rebirth
+    // Persist progress immediately after the rebirth.
     write_save(&SaveData {
-        gold_total: gold.total,
-        total_gold_earned: gold.total_gold_earned,
+        aura_total: aura.total,
         aura_multi_level: upgrades.aura_multi_level,
+        token_cap_level: upgrades.token_cap_level,
         merge_speed_level: upgrades.merge_speed_level,
         rebirth_count: rebirth.rebirth_count,
         paragon_points: rebirth.paragon_points,
         paragon_aura_level: rebirth.paragon_aura_level,
+        paragon_regen_level: rebirth.paragon_regen_level,
         shapes: vec![],
     });
 }
@@ -717,7 +600,11 @@ pub fn handle_paragon_upgrades(
                 }
             }
             ParagonKind::TokenRegen => {
-                // Legacy Paragon upgrade - no longer used
+                let cost = rebirth.paragon_regen_cost();
+                if rebirth.paragon_points >= cost {
+                    rebirth.paragon_points -= cost;
+                    rebirth.paragon_regen_level += 1;
+                }
             }
         }
     }

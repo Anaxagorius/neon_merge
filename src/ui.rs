@@ -1,10 +1,11 @@
 use bevy::prelude::*;
 
 use crate::components::{
-    AuraDisplay, ParagonButton, ParagonKind, ParagonLabel, RateDisplay, RebirthButton,
-    RebirthButtonLabel, RebirthDisplay, TokenDisplay, UpgradeButton, UpgradeKind, UpgradeLabel,
+    GoldDisplay, ParagonButton, ParagonKind, ParagonLabel, RateDisplay, RebirthButton,
+    RebirthButtonLabel, RebirthDisplay, ShopButton, ShopLabel, UpgradeButton, UpgradeKind, UpgradeLabel,
 };
-use crate::resources::{fmt_aura, AuraPool, RebirthState, SpawnTokens, UpgradeState, REBIRTH_THRESHOLD};
+use crate::resources::{fmt_gold, GoldPool, RebirthState, ShopState, UpgradeState};
+use crate::systems::shape_name;
 
 // ── HUD setup ─────────────────────────────────────────────────────────────────
 
@@ -24,35 +25,25 @@ pub fn setup_hud(mut commands: Commands) {
         })
         .insert(BackgroundColor(Color::srgba(0.03, 0.01, 0.12, 0.85)))
         .with_children(|parent| {
-            // Aura total
+            // Gold total
             parent.spawn((
-                Text::new("⚡ Aura: 10.0"),
+                Text::new("💰 Gold: 10.0"),
                 TextFont {
                     font_size: 22.0,
                     ..default()
                 },
-                TextColor(Color::srgb(0.45, 0.85, 1.00)),
-                AuraDisplay,
+                TextColor(Color::srgb(1.00, 0.84, 0.00)),
+                GoldDisplay,
             ));
-            // Aura rate
+            // Gold rate
             parent.spawn((
                 Text::new("+0.00 / sec"),
                 TextFont {
                     font_size: 16.0,
                     ..default()
                 },
-                TextColor(Color::srgb(0.50, 0.70, 0.90)),
+                TextColor(Color::srgb(0.90, 0.75, 0.40)),
                 RateDisplay,
-            ));
-            // Spawn tokens
-            parent.spawn((
-                Text::new("Spawn tokens: 5 / 10"),
-                TextFont {
-                    font_size: 16.0,
-                    ..default()
-                },
-                TextColor(Color::srgb(0.70, 0.55, 1.00)),
-                TokenDisplay,
             ));
             // Rebirth info
             parent.spawn((
@@ -66,7 +57,7 @@ pub fn setup_hud(mut commands: Commands) {
             ));
         });
 
-    // Bottom panel: two rows — session upgrades on top, rebirth & paragon below.
+    // Bottom panel: three rows — shop on top, session upgrades middle, rebirth & paragon bottom.
     commands
         .spawn(Node {
             position_type: PositionType::Absolute,
@@ -81,7 +72,22 @@ pub fn setup_hud(mut commands: Commands) {
         })
         .insert(BackgroundColor(Color::srgba(0.03, 0.01, 0.12, 0.92)))
         .with_children(|parent| {
-            // ── Row 1: session upgrades ───────────────────────────────────
+            // ── Row 1: shop system ────────────────────────────────────────
+            parent
+                .spawn(Node {
+                    flex_direction: FlexDirection::Row,
+                    justify_content: JustifyContent::SpaceEvenly,
+                    align_items: AlignItems::Center,
+                    height: Val::Px(65.0),
+                    ..default()
+                })
+                .with_children(|row| {
+                    for i in 0..3 {
+                        spawn_shop_button(row, i);
+                    }
+                });
+            
+            // ── Row 2: session upgrades ───────────────────────────────────
             parent
                 .spawn(Node {
                     flex_direction: FlexDirection::Row,
@@ -94,21 +100,11 @@ pub fn setup_hud(mut commands: Commands) {
                     spawn_upgrade_button(
                         row,
                         UpgradeKind::AuraMultiplier,
-                        "⚡ Aura Rate\nLv 0 | x1.0→x1.5\nCost: 50.0⚡",
-                    );
-                    spawn_upgrade_button(
-                        row,
-                        UpgradeKind::TokenCapacity,
-                        "📦 Token Cap\nLv 0 | 10→15\nCost: 25.0⚡",
-                    );
-                    spawn_upgrade_button(
-                        row,
-                        UpgradeKind::MergeSpeed,
-                        "⏩ Merge Spd\nLv 0 | 0.35s→0.27s\nCost: 30.0⚡",
+                        "💰 Gold Rate\nLv 0 | x1.0→x1.5\nCost: 50.0💰",
                     );
                 });
 
-            // ── Row 2: rebirth + paragon upgrades ────────────────────────
+            // ── Row 3: rebirth + paragon ──────────────────────────────────
             parent
                 .spawn(Node {
                     flex_direction: FlexDirection::Row,
@@ -118,275 +114,297 @@ pub fn setup_hud(mut commands: Commands) {
                     ..default()
                 })
                 .with_children(|row| {
-                    // Rebirth button
-                    row.spawn((
-                        Button,
-                        Node {
-                            width: Val::Px(148.0),
-                            height: Val::Px(68.0),
-                            justify_content: JustifyContent::Center,
-                            align_items: AlignItems::Center,
-                            ..default()
-                        },
-                        BackgroundColor(Color::srgb(0.10, 0.04, 0.04)),
-                        RebirthButton,
-                    ))
-                    .with_children(|btn| {
-                        btn.spawn((
-                            Text::new(format!(
-                                "🔄 Rebirth\nNeeds Lv {REBIRTH_THRESHOLD}+\n+20% perm / run"
-                            )),
-                            TextFont {
-                                font_size: 11.5,
-                                ..default()
-                            },
-                            TextColor(Color::srgb(1.00, 0.75, 0.20)),
-                            TextLayout::new_with_justify(JustifyText::Center),
-                            RebirthButtonLabel,
-                        ));
-                    });
-
-                    // Paragon: Aura Boost button
-                    spawn_paragon_button(
-                        row,
-                        ParagonKind::AuraBoost,
-                        "⭐ PP: Aura\nLv 0 | x1.0→x1.3\nCost: 1 PP",
-                    );
-
-                    // Paragon: Token Regen button
-                    spawn_paragon_button(
-                        row,
-                        ParagonKind::TokenRegen,
-                        "⭐ PP: Regen\nLv 0 | +0.0→+0.2/s\nCost: 1 PP",
-                    );
+                    spawn_rebirth_button(row);
+                    spawn_paragon_button(row, ParagonKind::AuraBoost, "🌟 Paragon\nGold Boost");
                 });
         });
 }
+
+// ── Shop button ───────────────────────────────────────────────────────────────
+
+fn spawn_shop_button(parent: &mut ChildBuilder, slot: usize) {
+    parent
+        .spawn((
+            Button,
+            Node {
+                width: Val::Px(140.0),
+                height: Val::Px(60.0),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                border: UiRect::all(Val::Px(2.0)),
+                ..default()
+            },
+            BackgroundColor(Color::srgb(0.15, 0.10, 0.25)),
+            BorderColor(Color::srgb(0.60, 0.40, 1.00)),
+            ShopButton(slot),
+        ))
+        .with_children(|button| {
+            button.spawn((
+                Text::new("Buy Circle\n10💰"),
+                TextFont {
+                    font_size: 13.0,
+                    ..default()
+                },
+                TextColor(Color::WHITE),
+                ShopLabel(slot),
+            ));
+        });
+}
+
+// ── Upgrade button ────────────────────────────────────────────────────────────
 
 fn spawn_upgrade_button(parent: &mut ChildBuilder, kind: UpgradeKind, initial_text: &str) {
     parent
         .spawn((
             Button,
             Node {
-                width: Val::Px(148.0),
-                height: Val::Px(75.0),
+                width: Val::Px(200.0),
+                height: Val::Px(70.0),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
+                border: UiRect::all(Val::Px(2.0)),
                 ..default()
             },
-            BackgroundColor(Color::srgb(0.07, 0.04, 0.16)),
+            BackgroundColor(Color::srgb(0.15, 0.10, 0.25)),
+            BorderColor(Color::srgb(0.60, 0.40, 1.00)),
             UpgradeButton(kind),
         ))
-        .with_children(|parent| {
-            parent.spawn((
+        .with_children(|button| {
+            button.spawn((
                 Text::new(initial_text),
                 TextFont {
-                    font_size: 11.5,
+                    font_size: 13.0,
                     ..default()
                 },
-                TextColor(Color::srgb(0.85, 0.85, 1.00)),
+                TextColor(Color::WHITE),
                 TextLayout::new_with_justify(JustifyText::Center),
                 UpgradeLabel(kind),
             ));
         });
 }
 
+// ── Rebirth button ────────────────────────────────────────────────────────────
+
+fn spawn_rebirth_button(parent: &mut ChildBuilder) {
+    parent
+        .spawn((
+            Button,
+            Node {
+                width: Val::Px(200.0),
+                height: Val::Px(70.0),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                border: UiRect::all(Val::Px(2.0)),
+                ..default()
+            },
+            BackgroundColor(Color::srgb(0.20, 0.08, 0.10)),
+            BorderColor(Color::srgb(1.00, 0.30, 0.40)),
+            RebirthButton,
+        ))
+        .with_children(|button| {
+            button.spawn((
+                Text::new("🔄 Rebirth\nLevel 0\nEarn +0 PP"),
+                TextFont {
+                    font_size: 13.0,
+                    ..default()
+                },
+                TextColor(Color::WHITE),
+                TextLayout::new_with_justify(JustifyText::Center),
+                RebirthButtonLabel,
+            ));
+        });
+}
+
+// ── Paragon button ────────────────────────────────────────────────────────────
+
 fn spawn_paragon_button(parent: &mut ChildBuilder, kind: ParagonKind, initial_text: &str) {
     parent
         .spawn((
             Button,
             Node {
-                width: Val::Px(148.0),
-                height: Val::Px(68.0),
+                width: Val::Px(200.0),
+                height: Val::Px(70.0),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
+                border: UiRect::all(Val::Px(2.0)),
                 ..default()
             },
-            BackgroundColor(Color::srgb(0.06, 0.06, 0.14)),
+            BackgroundColor(Color::srgb(0.12, 0.08, 0.18)),
+            BorderColor(Color::srgb(1.00, 0.75, 0.20)),
             ParagonButton(kind),
         ))
-        .with_children(|parent| {
-            parent.spawn((
+        .with_children(|button| {
+            button.spawn((
                 Text::new(initial_text),
                 TextFont {
-                    font_size: 11.5,
+                    font_size: 13.0,
                     ..default()
                 },
-                TextColor(Color::srgb(1.00, 0.90, 0.50)),
+                TextColor(Color::WHITE),
                 TextLayout::new_with_justify(JustifyText::Center),
                 ParagonLabel(kind),
             ));
         });
 }
 
-// ── HUD update ────────────────────────────────────────────────────────────────
+// ── Update systems ────────────────────────────────────────────────────────────
 
+/// Update the top HUD with current gold, rate, and rebirth info.
 pub fn update_hud(
-    aura: Res<AuraPool>,
-    tokens: Res<SpawnTokens>,
+    gold: Res<GoldPool>,
     rebirth: Res<RebirthState>,
-    mut aura_q: Query<&mut Text, (With<AuraDisplay>, Without<RateDisplay>, Without<TokenDisplay>, Without<RebirthDisplay>)>,
-    mut rate_q: Query<&mut Text, (With<RateDisplay>, Without<AuraDisplay>, Without<TokenDisplay>, Without<RebirthDisplay>)>,
-    mut tok_q: Query<&mut Text, (With<TokenDisplay>, Without<AuraDisplay>, Without<RateDisplay>, Without<RebirthDisplay>)>,
-    mut reb_q: Query<&mut Text, (With<RebirthDisplay>, Without<AuraDisplay>, Without<RateDisplay>, Without<TokenDisplay>)>,
+    mut gold_q: Query<&mut Text, (With<GoldDisplay>, Without<RateDisplay>, Without<RebirthDisplay>)>,
+    mut rate_q: Query<&mut Text, (With<RateDisplay>, Without<GoldDisplay>, Without<RebirthDisplay>)>,
+    mut rebirth_q: Query<&mut Text, (With<RebirthDisplay>, Without<GoldDisplay>, Without<RateDisplay>)>,
 ) {
-    for mut text in aura_q.iter_mut() {
-        **text = format!("⚡ Aura: {}", fmt_aura(aura.total));
+    for mut text in gold_q.iter_mut() {
+        **text = format!("💰 Gold: {}", fmt_gold(gold.total));
     }
     for mut text in rate_q.iter_mut() {
-        **text = format!("+{}/s", fmt_aura(aura.rate));
+        **text = format!("+{} / sec", fmt_gold(gold.rate));
     }
-    for mut text in tok_q.iter_mut() {
+    for mut text in rebirth_q.iter_mut() {
+        let perm_mult = rebirth.rebirth_gold_multiplier();
         **text = format!(
-            "Spawn tokens: {} / {}",
-            tokens.current as u32,
-            tokens.max as u32
-        );
-    }
-    let perm_multi = rebirth.rebirth_aura_multiplier() * rebirth.paragon_aura_multiplier();
-    for mut text in reb_q.iter_mut() {
-        **text = format!(
-            "🔄 Rebirth: {}  |  x{:.2} perm  |  PP: {}",
-            rebirth.rebirth_count,
-            perm_multi,
-            rebirth.paragon_points,
+            "🔄 Rebirth: {} | x{:.1} perm  |  PP: {}",
+            rebirth.rebirth_count, perm_mult, rebirth.paragon_points
         );
     }
 }
 
-// ── Upgrade panel update ──────────────────────────────────────────────────────
-
-pub fn update_upgrade_panel(
-    upgrades: Res<UpgradeState>,
-    aura: Res<AuraPool>,
-    mut labels_q: Query<(&UpgradeLabel, &mut Text)>,
-    mut buttons_q: Query<(&UpgradeButton, &mut BackgroundColor)>,
+/// Update shop button labels with current available shapes and costs.
+pub fn update_shop_ui(
+    shop: Res<ShopState>,
+    mut labels_q: Query<(&mut Text, &ShopLabel)>,
 ) {
-    for (label, mut text) in labels_q.iter_mut() {
+    for (mut text, label) in labels_q.iter_mut() {
+        let slot = label.0;
+        if slot < shop.available_levels.len() {
+            let level = shop.available_levels[slot];
+            let cost = crate::systems::shape_shop_cost(level);
+            **text = format!("Buy {}\n{}💰", shape_name(level), fmt_gold(cost));
+        }
+    }
+}
+
+/// Update the session-upgrade button labels (only gold rate now).
+pub fn update_upgrade_ui(
+    gold: Res<GoldPool>,
+    upgrades: Res<UpgradeState>,
+    mut labels_q: Query<(&mut Text, &mut BackgroundColor, &UpgradeLabel)>,
+) {
+    for (mut text, mut bg_color, label) in labels_q.iter_mut() {
         match label.0 {
             UpgradeKind::AuraMultiplier => {
+                let lv = upgrades.aura_multi_level;
+                let current_mult = upgrades.aura_multiplier();
+                let next_mult = UpgradeState {
+                    aura_multi_level: lv + 1,
+                    ..default()
+                }
+                .aura_multiplier();
                 let cost = upgrades.aura_multi_cost();
+                let affordable = gold.total >= cost;
+                *bg_color = if affordable {
+                    BackgroundColor(Color::srgb(0.18, 0.13, 0.28))
+                } else {
+                    BackgroundColor(Color::srgb(0.15, 0.10, 0.25))
+                };
                 **text = format!(
-                    "⚡ Aura Rate\nLv {} | x{:.1}→x{:.1}\n{}⚡",
-                    upgrades.aura_multi_level,
-                    upgrades.aura_multiplier(),
-                    upgrades.next_aura_multiplier(),
-                    fmt_aura(cost)
+                    "💰 Gold Rate\nLv {lv} | x{current_mult:.1}→x{next_mult:.1}\nCost: {:.1}💰",
+                    cost
                 );
             }
-            UpgradeKind::TokenCapacity => {
-                let cost = upgrades.token_cap_cost();
-                **text = format!(
-                    "📦 Token Cap\nLv {} | {}→{}\n{}⚡",
-                    upgrades.token_cap_level,
-                    upgrades.token_capacity() as u32,
-                    upgrades.next_token_capacity() as u32,
-                    fmt_aura(cost)
-                );
-            }
-            UpgradeKind::MergeSpeed => {
-                let cost = upgrades.merge_speed_cost();
-                **text = format!(
-                    "⏩ Merge Spd\nLv {} | {:.2}s→{:.2}s\n{}⚡",
-                    upgrades.merge_speed_level,
-                    upgrades.merge_interval(),
-                    UpgradeState::merge_interval_at(upgrades.merge_speed_level + 1),
-                    fmt_aura(cost)
-                );
+            UpgradeKind::TokenCapacity | UpgradeKind::MergeSpeed => {
+                // Legacy upgrades - display as disabled
+                *bg_color = BackgroundColor(Color::srgb(0.10, 0.08, 0.12));
+                **text = "(Disabled)".to_string();
             }
         }
     }
-    for (btn, mut bg) in buttons_q.iter_mut() {
-        let cost = match btn.0 {
-            UpgradeKind::AuraMultiplier => upgrades.aura_multi_cost(),
-            UpgradeKind::TokenCapacity => upgrades.token_cap_cost(),
-            UpgradeKind::MergeSpeed => upgrades.merge_speed_cost(),
-        };
-        *bg = if aura.total >= cost {
-            BackgroundColor(Color::srgb(0.15, 0.08, 0.30))
-        } else {
-            BackgroundColor(Color::srgb(0.07, 0.04, 0.16))
-        };
-    }
 }
 
-// ── Rebirth & Paragon panel update ────────────────────────────────────────────
-
-/// Updates the Rebirth button colour and label to reflect availability.
-pub fn update_rebirth_panel(
+/// Update the Rebirth button label and color based on total earned gold and max level.
+pub fn update_rebirth_ui(
+    gold: Res<GoldPool>,
     rebirth: Res<RebirthState>,
     shapes_q: Query<&crate::components::ShapeLevel>,
-    mut buttons_q: Query<&mut BackgroundColor, With<RebirthButton>>,
-    mut labels_q: Query<&mut Text, With<RebirthButtonLabel>>,
+    mut button_q: Query<(&mut BackgroundColor, &mut BorderColor), With<RebirthButton>>,
+    mut label_q: Query<&mut Text, With<RebirthButtonLabel>>,
 ) {
     let max_level = shapes_q.iter().map(|sl| sl.0).max().unwrap_or(0);
-    let available = max_level >= REBIRTH_THRESHOLD;
-    let pp_preview = if available {
-        RebirthState::pp_earned(max_level)
-    } else {
-        0
-    };
+    let pp_gain = crate::resources::RebirthState::pp_earned(max_level);
+    let threshold = rebirth.rebirth_gold_requirement();
+    let affordable = gold.total_gold_earned >= threshold;
 
-    for mut bg in buttons_q.iter_mut() {
-        *bg = if available {
-            BackgroundColor(Color::srgb(0.30, 0.10, 0.05))
+    for (mut bg, mut border) in button_q.iter_mut() {
+        if affordable {
+            *bg = BackgroundColor(Color::srgb(0.30, 0.12, 0.15));
+            *border = BorderColor(Color::srgb(1.00, 0.40, 0.50));
         } else {
-            BackgroundColor(Color::srgb(0.10, 0.04, 0.04))
-        };
+            *bg = BackgroundColor(Color::srgb(0.20, 0.08, 0.10));
+            *border = BorderColor(Color::srgb(1.00, 0.30, 0.40));
+        }
     }
-    for mut text in labels_q.iter_mut() {
-        if available {
-            let next_multi = 1.20_f64.powi((rebirth.rebirth_count + 1) as i32);
+
+    for mut text in label_q.iter_mut() {
+        if affordable {
             **text = format!(
-                "🔄 Rebirth\n+{pp_preview} PP  (×{next_multi:.2} perm)\nLv {REBIRTH_THRESHOLD}+ ✓",
+                "🔄 Rebirth\nLevel {max_level}\nEarn +{pp_gain} PP"
             );
         } else {
             **text = format!(
-                "🔄 Rebirth\nNeeds Lv {REBIRTH_THRESHOLD}+\n(you have Lv {max_level})",
+                "🔄 Rebirth\nNeed: {}💰\n(Lifetime: {}💰)",
+                fmt_gold(threshold),
+                fmt_gold(gold.total_gold_earned)
             );
         }
     }
 }
 
-/// Updates the Paragon upgrade button labels and colours.
-pub fn update_paragon_panel(
+/// Update Paragon upgrade button labels.
+pub fn update_paragon_ui(
     rebirth: Res<RebirthState>,
-    mut labels_q: Query<(&ParagonLabel, &mut Text)>,
-    mut buttons_q: Query<(&ParagonButton, &mut BackgroundColor)>,
+    mut labels_q: Query<(&mut Text, &mut BackgroundColor, &ParagonLabel)>,
 ) {
-    for (label, mut text) in labels_q.iter_mut() {
+    for (mut text, mut bg_color, label) in labels_q.iter_mut() {
         match label.0 {
             ParagonKind::AuraBoost => {
+                let lv = rebirth.paragon_aura_level;
+                let current_mult = rebirth.paragon_aura_multiplier();
+                let next_mult = crate::resources::RebirthState {
+                    paragon_aura_level: lv + 1,
+                    ..default()
+                }
+                .paragon_aura_multiplier();
                 let cost = rebirth.paragon_aura_cost();
+                let affordable = rebirth.paragon_points >= cost;
+                *bg_color = if affordable {
+                    BackgroundColor(Color::srgb(0.18, 0.12, 0.24))
+                } else {
+                    BackgroundColor(Color::srgb(0.12, 0.08, 0.18))
+                };
                 **text = format!(
-                    "⭐ PP: Aura\nLv {} | x{:.1}→x{:.1}\nCost: {} PP",
-                    rebirth.paragon_aura_level,
-                    rebirth.paragon_aura_multiplier(),
-                    rebirth.next_paragon_aura_multiplier(),
-                    cost,
-                );
-            }
-            ParagonKind::TokenRegen => {
-                let cost = rebirth.paragon_regen_cost();
-                **text = format!(
-                    "⭐ PP: Regen\nLv {} | +{:.1}→+{:.1}/s\nCost: {} PP",
-                    rebirth.paragon_regen_level,
-                    rebirth.paragon_regen_bonus(),
-                    rebirth.next_paragon_regen_bonus(),
-                    cost,
+                    "🌟 Paragon Gold\nLv {lv} | x{current_mult:.1}→x{next_mult:.1}\nCost: {cost} PP"
                 );
             }
         }
     }
-    for (btn, mut bg) in buttons_q.iter_mut() {
-        let cost = match btn.0 {
-            ParagonKind::AuraBoost => rebirth.paragon_aura_cost(),
-            ParagonKind::TokenRegen => rebirth.paragon_regen_cost(),
-        };
-        *bg = if rebirth.paragon_points >= cost {
-            BackgroundColor(Color::srgb(0.12, 0.10, 0.22))
-        } else {
-            BackgroundColor(Color::srgb(0.06, 0.06, 0.14))
-        };
+}
+
+/// Visual feedback: highlight buttons when hovered.
+pub fn button_interaction(
+    mut interaction_q: Query<(&Interaction, &mut BorderColor), (Changed<Interaction>, With<Button>)>,
+) {
+    for (interaction, mut border) in interaction_q.iter_mut() {
+        match interaction {
+            Interaction::Hovered => {
+                *border = BorderColor(Color::srgb(1.00, 1.00, 1.00));
+            }
+            Interaction::None => {
+                *border = BorderColor(Color::srgb(0.60, 0.40, 1.00));
+            }
+            _ => {}
+        }
     }
 }
