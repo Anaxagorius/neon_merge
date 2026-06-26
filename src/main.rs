@@ -7,15 +7,16 @@ mod save;
 mod systems;
 mod ui;
 
-use animations::{animate_merge_flash, animate_spawn_pop};
-use resources::{AuraPool, Grid, MergeTimer, RebirthState, SpawnTokens, UpgradeState};
+use animations::{animate_merge_flash, animate_spawn_pop, animate_pulse, animate_glow, PulseEffect, GlowEffect};
+use resources::{GoldPool, Grid, DragState, ShopState, RebirthState, UpgradeState};
 use save::{auto_save, load_game, AutoSaveTimer};
 use systems::{
-    auto_merge, generate_aura, handle_input, handle_paragon_upgrades, handle_rebirth,
-    handle_upgrades, regen_tokens, setup_camera, setup_grid,
+    generate_gold, handle_drag_start, handle_drag_update, handle_drag_end, handle_shop_purchase,
+    handle_paragon_upgrades, handle_rebirth, handle_upgrades, setup_camera, setup_grid,
 };
 use ui::{
-    setup_hud, update_hud, update_paragon_panel, update_rebirth_panel, update_upgrade_panel,
+    button_interaction, setup_hud, update_hud, update_paragon_ui, update_rebirth_ui, 
+    update_shop_ui, update_upgrade_ui,
 };
 
 fn main() {
@@ -31,9 +32,9 @@ fn main() {
         }))
         .insert_resource(ClearColor(Color::srgb(0.04, 0.02, 0.10)))
         .init_resource::<Grid>()
-        .init_resource::<AuraPool>()
-        .init_resource::<SpawnTokens>()
-        .init_resource::<MergeTimer>()
+        .init_resource::<GoldPool>()
+        .init_resource::<DragState>()
+        .init_resource::<ShopState>()
         .init_resource::<UpgradeState>()
         .init_resource::<RebirthState>()
         .init_resource::<AutoSaveTimer>()
@@ -43,20 +44,25 @@ fn main() {
         .add_systems(
             Update,
             (
-                handle_input,
-                regen_tokens,
-                auto_merge,
-                generate_aura,
+                handle_drag_start,
+                handle_drag_update,
+                handle_drag_end,
+                handle_shop_purchase,
+                generate_gold,
                 handle_upgrades,
                 handle_rebirth,
                 handle_paragon_upgrades,
                 animate_spawn_pop,
                 animate_merge_flash,
+                animate_pulse,
+                animate_glow,
                 auto_save,
                 update_hud,
-                update_upgrade_panel,
-                update_rebirth_panel,
-                update_paragon_panel,
+                update_shop_ui,
+                update_upgrade_ui,
+                update_rebirth_ui,
+                update_paragon_ui,
+                button_interaction,
             ),
         )
         .run();

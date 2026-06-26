@@ -23,13 +23,10 @@ pub struct ShapeLabel;
 // ── UI marker components ─────────────────────────────────────────────────────
 
 #[derive(Component)]
-pub struct AuraDisplay;
+pub struct GoldDisplay;
 
 #[derive(Component)]
 pub struct RateDisplay;
-
-#[derive(Component)]
-pub struct TokenDisplay;
 
 // ── Rebirth & Paragon UI markers ──────────────────────────────────────────────
 
@@ -41,7 +38,6 @@ pub struct RebirthDisplay;
 #[derive(Component, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ParagonKind {
     AuraBoost,
-    TokenRegen,
 }
 
 /// Marks the Rebirth action button.
@@ -78,3 +74,13 @@ pub struct UpgradeButton(pub UpgradeKind);
 /// Marks the text child of an upgrade button so its label can be updated.
 #[derive(Component)]
 pub struct UpgradeLabel(pub UpgradeKind);
+
+// ── Shop system ───────────────────────────────────────────────────────────────
+
+/// Marks a shop slot button for buying shapes.
+#[derive(Component)]
+pub struct ShopButton(pub usize);
+
+/// Marks the text child of a shop button.
+#[derive(Component)]
+pub struct ShopLabel(pub usize);

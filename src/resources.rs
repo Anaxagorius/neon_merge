@@ -82,52 +82,55 @@ pub fn world_to_grid(world: Vec2) -> Option<(i32, i32)> {
     }
 }
 
-// ── Aura (primary currency) ───────────────────────────────────────────────────
+// ── Gold (primary currency) ───────────────────────────────────────────────────
 
 #[derive(Resource)]
-pub struct AuraPool {
+pub struct GoldPool {
     pub total: f64,
-    pub rate: f64, // aura per second (computed each frame)
+    pub rate: f64, // gold per second (computed each frame)
+    pub total_gold_earned: f64, // lifetime total for rebirth gating
 }
 
-impl Default for AuraPool {
+impl Default for GoldPool {
     fn default() -> Self {
         Self {
             total: 10.0,
             rate: 0.0,
+            total_gold_earned: 0.0,
         }
     }
 }
 
-// ── Spawn Tokens ──────────────────────────────────────────────────────────────
+// ── Drag state ────────────────────────────────────────────────────────────────
 
-/// Governs how often the player can place new shapes.
-#[derive(Resource)]
-pub struct SpawnTokens {
-    pub current: f32,
-    pub max: f32,
-    pub regen_rate: f32, // tokens per second
+/// Resource to track drag-and-drop state.
+#[derive(Resource, Default)]
+pub struct DragState {
+    pub dragging: Option<DragInfo>,
 }
 
-impl Default for SpawnTokens {
+pub struct DragInfo {
+    pub entity: Entity,
+    pub original_col: i32,
+    pub original_row: i32,
+    pub offset: Vec2, // cursor offset from shape center at pick-up
+}
+
+// ── Shop system ───────────────────────────────────────────────────────────────
+
+/// Shop state for purchasing shapes.
+#[derive(Resource)]
+pub struct ShopState {
+    pub available_levels: Vec<u32>, // shape levels available for purchase
+    pub refresh_cost: f64,          // cost to refresh the shop (future use, start at 0)
+}
+
+impl Default for ShopState {
     fn default() -> Self {
         Self {
-            current: 5.0,
-            max: 10.0,
-            regen_rate: 0.5, // 0.5 tokens per second (one token every 2 seconds)
+            available_levels: vec![1, 1, 2], // start: two circles and one triangle
+            refresh_cost: 0.0,
         }
-    }
-}
-
-// ── Merge timer ───────────────────────────────────────────────────────────────
-
-/// Tick that drives automatic merge detection.
-#[derive(Resource)]
-pub struct MergeTimer(pub Timer);
-
-impl Default for MergeTimer {
-    fn default() -> Self {
-        MergeTimer(Timer::from_seconds(0.35, TimerMode::Repeating))
     }
 }
 
@@ -137,16 +140,12 @@ impl Default for MergeTimer {
 #[derive(Resource, Default)]
 pub struct UpgradeState {
     pub aura_multi_level: u32,
-    pub token_cap_level: u32,
     pub merge_speed_level: u32,
 }
 
 impl UpgradeState {
     pub fn aura_multi_cost(&self) -> f64 {
         50.0 * 5.0f64.powi(self.aura_multi_level as i32)
-    }
-    pub fn token_cap_cost(&self) -> f64 {
-        25.0 * 4.0f64.powi(self.token_cap_level as i32)
     }
     pub fn merge_speed_cost(&self) -> f64 {
         30.0 * 6.0f64.powi(self.merge_speed_level as i32)
@@ -157,24 +156,9 @@ impl UpgradeState {
     pub fn next_aura_multiplier(&self) -> f64 {
         1.0 + 0.5 * (self.aura_multi_level + 1) as f64
     }
-    pub fn token_capacity(&self) -> f32 {
-        10.0 + 5.0 * self.token_cap_level as f32
-    }
-    pub fn next_token_capacity(&self) -> f32 {
-        10.0 + 5.0 * (self.token_cap_level + 1) as f32
-    }
-    pub fn merge_interval(&self) -> f32 {
-        Self::merge_interval_at(self.merge_speed_level)
-    }
-    pub fn merge_interval_at(level: u32) -> f32 {
-        (0.35 / (1.0 + 0.3 * level as f32)).max(0.05)
-    }
 }
 
 // ── Rebirth & Paragon ─────────────────────────────────────────────────────────
-
-/// Minimum shape level that must exist on the grid to trigger a Rebirth.
-pub const REBIRTH_THRESHOLD: u32 = 10;
 
 /// Persistent state that survives Rebirths (Paragon levels) and accumulates
 /// across them (rebirth count, Paragon Points).
@@ -184,20 +168,18 @@ pub struct RebirthState {
     pub rebirth_count: u32,
     /// Unspent Paragon Points.
     pub paragon_points: u32,
-    /// Paragon upgrade level: permanent Aura multiplier.
+    /// Paragon upgrade level: permanent Gold multiplier.
     pub paragon_aura_level: u32,
-    /// Paragon upgrade level: permanent token-regen bonus.
-    pub paragon_regen_level: u32,
 }
 
 impl RebirthState {
-    /// Permanently compounds Aura rate by ×1.20 per rebirth.
+    /// Permanently compounds Gold rate by ×1.20 per rebirth.
     /// 1 rebirth → ×1.20, 2 → ×1.44, 5 → ×2.49, etc.
-    pub fn rebirth_aura_multiplier(&self) -> f64 {
+    pub fn rebirth_gold_multiplier(&self) -> f64 {
         1.20_f64.powi(self.rebirth_count as i32)
     }
 
-    /// +30 % permanent Aura multiplier per Paragon Aura level.
+    /// +30 % permanent Gold multiplier per Paragon Aura level.
     pub fn paragon_aura_multiplier(&self) -> f64 {
         1.0 + 0.30 * self.paragon_aura_level as f64
     }
@@ -206,22 +188,9 @@ impl RebirthState {
         1.0 + 0.30 * (self.paragon_aura_level + 1) as f64
     }
 
-    /// +0.20 tokens / s bonus per Paragon Regen level.
-    pub fn paragon_regen_bonus(&self) -> f32 {
-        0.20 * self.paragon_regen_level as f32
-    }
-
-    pub fn next_paragon_regen_bonus(&self) -> f32 {
-        0.20 * (self.paragon_regen_level + 1) as f32
-    }
-
     /// PP cost doubles each level: 1, 2, 4, 8, …
     pub fn paragon_aura_cost(&self) -> u32 {
         1u32.checked_shl(self.paragon_aura_level).unwrap_or(u32::MAX)
-    }
-
-    pub fn paragon_regen_cost(&self) -> u32 {
-        1u32.checked_shl(self.paragon_regen_level).unwrap_or(u32::MAX)
     }
 
     /// Paragon Points earned when rebirthing with the given highest shape level.
@@ -229,12 +198,17 @@ impl RebirthState {
     pub fn pp_earned(max_level: u32) -> u32 {
         (max_level / 5).max(1)
     }
+    
+    /// Total gold required to unlock rebirth.
+    pub fn rebirth_gold_requirement(&self) -> f64 {
+        10_000.0 * (self.rebirth_count + 1) as f64
+    }
 }
 
 // ── Large-number formatter ────────────────────────────────────────────────────
 
-/// Formats an aura value with appropriate suffix (K, M, B, T, Qa).
-pub fn fmt_aura(value: f64) -> String {
+/// Formats a gold value with appropriate suffix (K, M, B, T, Qa).
+pub fn fmt_gold(value: f64) -> String {
     if value >= 1e15 {
         format!("{:.2}Qa", value / 1e15)
     } else if value >= 1e12 {

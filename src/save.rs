@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
 
 use crate::components::{GridPos, ShapeLevel};
-use crate::resources::{AuraPool, Grid, MergeTimer, RebirthState, SpawnTokens, UpgradeState};
+use crate::resources::{GoldPool, Grid, RebirthState, UpgradeState};
 use crate::systems::spawn_shape;
 
 // ── Save file location ────────────────────────────────────────────────────────
@@ -19,16 +19,15 @@ fn save_path() -> PathBuf {
 /// All persistent game state that is written to / read from disk.
 #[derive(Serialize, Deserialize, Default)]
 pub struct SaveData {
-    pub aura_total: f64,
+    pub gold_total: f64,
+    pub total_gold_earned: f64,
     // Session upgrades
     pub aura_multi_level: u32,
-    pub token_cap_level: u32,
     pub merge_speed_level: u32,
     // Rebirth / Paragon
     pub rebirth_count: u32,
     pub paragon_points: u32,
     pub paragon_aura_level: u32,
-    pub paragon_regen_level: u32,
     // Grid state
     pub shapes: Vec<SavedShape>,
 }
@@ -80,34 +79,31 @@ impl Default for AutoSaveTimer {
 pub fn load_game(
     mut commands: Commands,
     mut grid: ResMut<Grid>,
-    mut aura: ResMut<AuraPool>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    mut gold: ResMut<GoldPool>,
     mut upgrades: ResMut<UpgradeState>,
-    mut tokens: ResMut<SpawnTokens>,
     mut rebirth: ResMut<RebirthState>,
-    mut merge_timer: ResMut<MergeTimer>,
 ) {
     let Some(data) = read_save() else {
         return; // no save file — use defaults
     };
 
-    aura.total = data.aura_total;
+    gold.total = data.gold_total;
+    gold.total_gold_earned = data.total_gold_earned;
     upgrades.aura_multi_level = data.aura_multi_level;
-    upgrades.token_cap_level = data.token_cap_level;
     upgrades.merge_speed_level = data.merge_speed_level;
-
-    // Sync derived values that depend on upgrade levels.
-    tokens.max = upgrades.token_capacity();
-    tokens.current = tokens.current.min(tokens.max);
-    merge_timer.0 = Timer::from_seconds(upgrades.merge_interval(), TimerMode::Repeating);
 
     rebirth.rebirth_count = data.rebirth_count;
     rebirth.paragon_points = data.paragon_points;
     rebirth.paragon_aura_level = data.paragon_aura_level;
-    rebirth.paragon_regen_level = data.paragon_regen_level;
+    
     for saved in data.shapes {
         if Grid::in_bounds(saved.col, saved.row) && grid.is_empty(saved.col, saved.row) {
             spawn_shape(
                 &mut commands,
+                &mut meshes,
+                &mut materials,
                 &mut grid,
                 saved.col,
                 saved.row,
@@ -117,8 +113,8 @@ pub fn load_game(
     }
 
     info!(
-        "Save loaded: {} rebirths, {:.1} aura",
-        rebirth.rebirth_count, aura.total
+        "Save loaded: {} rebirths, {:.1} gold",
+        rebirth.rebirth_count, gold.total
     );
 }
 
@@ -126,7 +122,7 @@ pub fn load_game(
 pub fn auto_save(
     time: Res<Time>,
     mut timer: ResMut<AutoSaveTimer>,
-    aura: Res<AuraPool>,
+    gold: Res<GoldPool>,
     upgrades: Res<UpgradeState>,
     rebirth: Res<RebirthState>,
     shapes_q: Query<(&ShapeLevel, &GridPos)>,
@@ -136,14 +132,13 @@ pub fn auto_save(
         return;
     }
     write_save(&SaveData {
-        aura_total: aura.total,
+        gold_total: gold.total,
+        total_gold_earned: gold.total_gold_earned,
         aura_multi_level: upgrades.aura_multi_level,
-        token_cap_level: upgrades.token_cap_level,
         merge_speed_level: upgrades.merge_speed_level,
         rebirth_count: rebirth.rebirth_count,
         paragon_points: rebirth.paragon_points,
         paragon_aura_level: rebirth.paragon_aura_level,
-        paragon_regen_level: rebirth.paragon_regen_level,
         shapes: shapes_q
             .iter()
             .map(|(shape, pos)| SavedShape {
