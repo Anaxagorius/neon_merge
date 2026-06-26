@@ -1,8 +1,8 @@
 use bevy::core_pipeline::bloom::Bloom;
 use bevy::prelude::*;
-use bevy::sprite::{ColorMaterial, Mesh2d, MeshMaterial2d};
+use bevy::render::mesh::components::Mesh2d;
+use bevy::sprite::{ColorMaterial, MeshMaterial2d};
 use bevy::math::primitives::{Circle as CirclePrimitive, RegularPolygon, Rectangle as RectanglePrimitive, Ellipse};
-use std::f32::consts::PI;
 
 use crate::animations::{MergeFlash, SpawnPop, PulseEffect, GlowEffect};
 use crate::components::{GridPos, LabelEntity, ParagonButton, ParagonKind, RebirthButton, ShapeLabel, ShapeLevel, UpgradeButton, UpgradeKind, ShopButton};
@@ -402,7 +402,10 @@ pub fn handle_drag_end(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
     mut label_transforms_q: Query<&mut Transform, With<ShapeLabel>>,
-    mut shapes_q: Query<(&ShapeLevel, &LabelEntity, &mut GridPos, &mut Transform)>,
+    mut shape_queries: ParamSet<(
+        Query<(&ShapeLevel, &LabelEntity)>,
+        Query<(&ShapeLevel, &LabelEntity, &mut GridPos, &mut Transform)>,
+    )>,
 ) {
     if !mouse.just_released(MouseButton::Left) {
         return;
@@ -428,19 +431,20 @@ pub fn handle_drag_end(
     let target_cell = world_to_grid(world_pos);
 
     // Get dragged shape info
-    let Ok((shape_level, label_entity, mut grid_pos, mut transform)) = shapes_q.get_mut(drag_info.entity) else {
+    let Ok((shape_level, label_entity)) = shape_queries.p0().get(drag_info.entity) else {
         return;
     };
     let dragged_level = shape_level.0;
+    let dragged_label_entity = label_entity.0;
 
     if let Some((target_col, target_row)) = target_cell {
         // Check if target cell has a shape
         if let Some(target_entity) = grid.get(target_col, target_row) {
             // Try to merge
-            if let Ok((target_level, target_label, _, _)) = shapes_q.get(target_entity) {
+            if let Ok((target_level, target_label)) = shape_queries.p0().get(target_entity) {
                 if target_level.0 == dragged_level && dragged_level < MAX_LEVEL {
                     // Merge! Despawn dragged shape and its label
-                    commands.entity(label_entity.0).despawn();
+                    commands.entity(dragged_label_entity).despawn();
                     commands.entity(drag_info.entity).despawn();
 
                     // Upgrade target in place
@@ -501,6 +505,9 @@ pub fn handle_drag_end(
             }
         } else if Grid::in_bounds(target_col, target_row) {
             // Target cell is empty and in bounds - place shape there
+            let Ok((_, _, mut grid_pos, mut transform)) = shape_queries.p1().get_mut(drag_info.entity) else {
+                return;
+            };
             let world = grid_to_world(target_col, target_row);
             transform.translation.x = world.x;
             transform.translation.y = world.y;
@@ -510,7 +517,7 @@ pub fn handle_drag_end(
             grid.insert(target_col, target_row, drag_info.entity);
 
             // Update label position
-            if let Ok(mut label_transform) = label_transforms_q.get_mut(label_entity.0) {
+            if let Ok(mut label_transform) = label_transforms_q.get_mut(dragged_label_entity) {
                 label_transform.translation.x = world.x;
                 label_transform.translation.y = world.y;
             }
@@ -519,6 +526,9 @@ pub fn handle_drag_end(
     }
 
     // If we get here, snap back to original position
+    let Ok((_, _, _, mut transform)) = shape_queries.p1().get_mut(drag_info.entity) else {
+        return;
+    };
     let world = grid_to_world(drag_info.original_col, drag_info.original_row);
     transform.translation.x = world.x;
     transform.translation.y = world.y;
@@ -714,9 +724,6 @@ pub fn handle_paragon_upgrades(
                     rebirth.paragon_points -= cost;
                     rebirth.paragon_aura_level += 1;
                 }
-            }
-            ParagonKind::TokenRegen => {
-                // Legacy Paragon upgrade - no longer used
             }
         }
     }
