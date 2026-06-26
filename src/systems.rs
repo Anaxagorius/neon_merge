@@ -401,10 +401,10 @@ pub fn handle_drag_end(
     mut grid: ResMut<Grid>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
-    mut label_transforms_q: Query<&mut Transform, With<ShapeLabel>>,
     mut shape_queries: ParamSet<(
         Query<(&ShapeLevel, &LabelEntity)>,
         Query<(&ShapeLevel, &LabelEntity, &mut GridPos, &mut Transform)>,
+        Query<&mut Transform, With<ShapeLabel>>,
     )>,
 ) {
     if !mouse.just_released(MouseButton::Left) {
@@ -516,20 +516,22 @@ pub fn handle_drag_end(
             }
         } else if Grid::in_bounds(target_col, target_row) {
             // Target cell is empty and in bounds - place shape there
-            let mut dragged_shape_q = shape_queries.p1();
-            let Ok((_, _, mut grid_pos, mut transform)) = dragged_shape_q.get_mut(drag_info.entity) else {
-                return;
-            };
             let world = grid_to_world(target_col, target_row);
-            transform.translation.x = world.x;
-            transform.translation.y = world.y;
-            transform.translation.z = 1.0;
-            grid_pos.col = target_col;
-            grid_pos.row = target_row;
+            {
+                let mut dragged_shape_q = shape_queries.p1();
+                let Ok((_, _, mut grid_pos, mut transform)) = dragged_shape_q.get_mut(drag_info.entity) else {
+                    return;
+                };
+                transform.translation.x = world.x;
+                transform.translation.y = world.y;
+                transform.translation.z = 1.0;
+                grid_pos.col = target_col;
+                grid_pos.row = target_row;
+            }
             grid.insert(target_col, target_row, drag_info.entity);
 
             // Update label position
-            if let Ok(mut label_transform) = label_transforms_q.get_mut(dragged_label_entity) {
+            if let Ok(mut label_transform) = shape_queries.p2().get_mut(dragged_label_entity) {
                 label_transform.translation.x = world.x;
                 label_transform.translation.y = world.y;
             }
