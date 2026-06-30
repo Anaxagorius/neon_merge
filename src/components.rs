@@ -65,6 +65,7 @@ pub enum UpgradeKind {
     AuraMultiplier,
     TokenCapacity,
     MergeSpeed,
+    ClickGold,
 }
 
 /// Marks a UI button entity as an upgrade button.
