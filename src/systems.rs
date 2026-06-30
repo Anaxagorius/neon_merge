@@ -586,14 +586,18 @@ pub fn handle_shop_purchase(
         }
 
         // Determine how many purchases to attempt
-        let empty_cells: u32 = (0..GRID_ROWS)
+        let mut remaining_cells: u32 = (0..GRID_ROWS)
             .flat_map(|r| (0..GRID_COLS).map(move |c| (c, r)))
             .filter(|&(c, r)| grid.is_empty(c, r))
             .count() as u32;
 
-        let count = buy_qty.count().unwrap_or(empty_cells).min(empty_cells);
+        let count = buy_qty.count().unwrap_or(remaining_cells).min(remaining_cells);
 
         for _ in 0..count {
+            if remaining_cells == 0 {
+                break;
+            }
+
             let level = shop.available_levels[slot_index];
             let cost = shape_shop_cost(level);
 
@@ -620,6 +624,7 @@ pub fn handle_shop_purchase(
             };
 
             spawn_shape(&mut commands, &mut meshes, &mut materials, &mut grid, col, row, level);
+            remaining_cells -= 1;
 
             // Refresh this shop slot with a new random level
             // Weighted: 70% level 1, 20% level 2, 10% level 3+ (up to unlocked max)

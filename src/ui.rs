@@ -138,17 +138,14 @@ pub fn setup_hud(mut commands: Commands) {
 
 // ── Buy quantity button ───────────────────────────────────────────────────────
 
+const BUY_QTY_BG_ACTIVE: Color     = Color::srgb(0.40, 0.20, 0.60);
+const BUY_QTY_BG_INACTIVE: Color   = Color::srgb(0.15, 0.10, 0.25);
+const BUY_QTY_BORDER_ACTIVE: Color   = Color::srgb(1.00, 0.80, 1.00);
+const BUY_QTY_BORDER_INACTIVE: Color = Color::srgb(0.60, 0.40, 1.00);
+
 fn spawn_buy_quantity_button(parent: &mut ChildBuilder, qty: BuyQuantity, active: bool) {
-    let bg = if active {
-        Color::srgb(0.40, 0.20, 0.60)
-    } else {
-        Color::srgb(0.15, 0.10, 0.25)
-    };
-    let border = if active {
-        Color::srgb(1.00, 0.80, 1.00)
-    } else {
-        Color::srgb(0.60, 0.40, 1.00)
-    };
+    let bg     = if active { BUY_QTY_BG_ACTIVE }     else { BUY_QTY_BG_INACTIVE };
+    let border = if active { BUY_QTY_BORDER_ACTIVE } else { BUY_QTY_BORDER_INACTIVE };
     parent
         .spawn((
             Button,
@@ -186,11 +183,11 @@ pub fn update_buy_quantity_ui(
     }
     for (mut bg, mut border, btn) in buttons_q.iter_mut() {
         if btn.0 == *buy_qty {
-            *bg = BackgroundColor(Color::srgb(0.40, 0.20, 0.60));
-            *border = BorderColor(Color::srgb(1.00, 0.80, 1.00));
+            *bg     = BackgroundColor(BUY_QTY_BG_ACTIVE);
+            *border = BorderColor(BUY_QTY_BORDER_ACTIVE);
         } else {
-            *bg = BackgroundColor(Color::srgb(0.15, 0.10, 0.25));
-            *border = BorderColor(Color::srgb(0.60, 0.40, 1.00));
+            *bg     = BackgroundColor(BUY_QTY_BG_INACTIVE);
+            *border = BorderColor(BUY_QTY_BORDER_INACTIVE);
         }
     }
 }
