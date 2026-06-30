@@ -141,6 +141,7 @@ impl Default for ShopState {
 pub struct UpgradeState {
     pub aura_multi_level: u32,
     pub merge_speed_level: u32,
+    pub click_gold_level: u32,
 }
 
 impl UpgradeState {
@@ -155,6 +156,21 @@ impl UpgradeState {
     }
     pub fn next_aura_multiplier(&self) -> f64 {
         1.0 + 0.5 * (self.aura_multi_level + 1) as f64
+    }
+    /// Gold awarded each time the player clicks a shape (releases it back to its original cell).
+    pub fn click_gold_per_click(&self) -> f64 {
+        if self.click_gold_level == 0 {
+            0.0
+        } else {
+            5.0 * 2.0f64.powi((self.click_gold_level - 1) as i32)
+        }
+    }
+    /// Gold awarded for the *next* level (used in the upgrade button preview).
+    pub fn next_click_gold_per_click(&self) -> f64 {
+        5.0 * 2.0f64.powi(self.click_gold_level as i32)
+    }
+    pub fn click_gold_cost(&self) -> f64 {
+        25.0 * 5.0f64.powi(self.click_gold_level as i32)
     }
 }
 

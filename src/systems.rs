@@ -401,6 +401,8 @@ pub fn handle_drag_end(
     mut grid: ResMut<Grid>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
+    upgrades: Res<UpgradeState>,
+    mut gold: ResMut<GoldPool>,
     mut shape_queries: ParamSet<(
         Query<(&ShapeLevel, &LabelEntity)>,
         Query<(&ShapeLevel, &LabelEntity, &mut GridPos, &mut Transform)>,
@@ -535,6 +537,14 @@ pub fn handle_drag_end(
                 label_transform.translation.x = world.x;
                 label_transform.translation.y = world.y;
             }
+
+            // Award per-click gold when the shape is returned to its original cell (a click, not a drag).
+            if target_col == drag_info.original_col && target_row == drag_info.original_row {
+                let bonus = upgrades.click_gold_per_click();
+                gold.total += bonus;
+                gold.total_gold_earned += bonus;
+            }
+
             return;
         }
     }
@@ -686,6 +696,13 @@ pub fn handle_upgrades(
             }
             UpgradeKind::MergeSpeed => {
                 // Legacy upgrade - no longer used (no auto-merge timer)
+            }
+            UpgradeKind::ClickGold => {
+                let cost = upgrades.click_gold_cost();
+                if gold.total >= cost {
+                    gold.total -= cost;
+                    upgrades.click_gold_level += 1;
+                }
             }
         }
     }

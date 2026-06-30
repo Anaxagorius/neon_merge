@@ -118,6 +118,11 @@ pub fn setup_hud(mut commands: Commands) {
                         UpgradeKind::AuraMultiplier,
                         "💰 Gold Rate\nLv 0 | x1.0→x1.5\nCost: 50.0💰",
                     );
+                    spawn_upgrade_button(
+                        row,
+                        UpgradeKind::ClickGold,
+                        "👆 Per Click\nLv 0 | 0→5/click\nCost: 25.0💰",
+                    );
                 });
 
             // ── Row 3: rebirth + paragon ──────────────────────────────────
@@ -391,6 +396,22 @@ pub fn update_upgrade_ui(
                 // Legacy upgrades - display as disabled
                 *bg_color = BackgroundColor(Color::srgb(0.10, 0.08, 0.12));
                 **text = "(Disabled)".to_string();
+            }
+            UpgradeKind::ClickGold => {
+                let lv = upgrades.click_gold_level;
+                let current = upgrades.click_gold_per_click();
+                let next = upgrades.next_click_gold_per_click();
+                let cost = upgrades.click_gold_cost();
+                let affordable = gold.total >= cost;
+                *bg_color = if affordable {
+                    BackgroundColor(Color::srgb(0.18, 0.13, 0.28))
+                } else {
+                    BackgroundColor(Color::srgb(0.15, 0.10, 0.25))
+                };
+                **text = format!(
+                    "👆 Per Click\nLv {lv} | {current:.0}→{next:.0}/click\nCost: {}💰",
+                    fmt_gold(cost)
+                );
             }
         }
     }
