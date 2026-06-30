@@ -8,15 +8,16 @@ mod systems;
 mod ui;
 
 use animations::{animate_glow, animate_merge_flash, animate_pulse, animate_spawn_pop};
-use resources::{GoldPool, Grid, DragState, ShopState, RebirthState, UpgradeState};
+use resources::{BuyQuantity, GoldPool, Grid, DragState, ShopState, RebirthState, UpgradeState};
 use save::{auto_save, load_game, AutoSaveTimer};
 use systems::{
-    generate_gold, handle_drag_start, handle_drag_update, handle_drag_end, handle_shop_purchase,
-    handle_paragon_upgrades, handle_rebirth, handle_upgrades, setup_camera, setup_grid,
+    generate_gold, handle_buy_quantity_selection, handle_drag_start, handle_drag_update,
+    handle_drag_end, handle_shop_purchase, handle_paragon_upgrades, handle_rebirth,
+    handle_upgrades, setup_camera, setup_grid,
 };
 use ui::{
-    button_interaction, setup_hud, update_hud, update_paragon_ui, update_rebirth_ui, 
-    update_shop_ui, update_upgrade_ui,
+    button_interaction, setup_hud, update_buy_quantity_ui, update_hud, update_paragon_ui,
+    update_rebirth_ui, update_shop_ui, update_upgrade_ui,
 };
 
 fn main() {
@@ -38,31 +39,38 @@ fn main() {
         .init_resource::<UpgradeState>()
         .init_resource::<RebirthState>()
         .init_resource::<AutoSaveTimer>()
+        .init_resource::<BuyQuantity>()
         // Startup
         .add_systems(Startup, (setup_camera, setup_grid, setup_hud, load_game))
         // Every frame
         .add_systems(
             Update,
             (
-                handle_drag_start,
-                handle_drag_update,
-                handle_drag_end,
-                handle_shop_purchase,
-                generate_gold,
-                handle_upgrades,
-                handle_rebirth,
-                handle_paragon_upgrades,
-                animate_spawn_pop,
-                animate_merge_flash,
-                animate_pulse,
-                animate_glow,
-                auto_save,
-                update_hud,
-                update_shop_ui,
-                update_upgrade_ui,
-                update_rebirth_ui,
-                update_paragon_ui,
-                button_interaction,
+                (
+                    handle_drag_start,
+                    handle_drag_update,
+                    handle_drag_end,
+                    handle_buy_quantity_selection,
+                    handle_shop_purchase,
+                    generate_gold,
+                    handle_upgrades,
+                    handle_rebirth,
+                    handle_paragon_upgrades,
+                    animate_spawn_pop,
+                ),
+                (
+                    animate_merge_flash,
+                    animate_pulse,
+                    animate_glow,
+                    auto_save,
+                    update_hud,
+                    update_buy_quantity_ui,
+                    update_shop_ui,
+                    update_upgrade_ui,
+                    update_rebirth_ui,
+                    update_paragon_ui,
+                    button_interaction,
+                ),
             ),
         )
         .run();

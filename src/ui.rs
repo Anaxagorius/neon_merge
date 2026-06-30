@@ -1,10 +1,11 @@
 use bevy::prelude::*;
 
 use crate::components::{
-    GoldDisplay, ParagonButton, ParagonKind, ParagonLabel, RateDisplay, RebirthButton,
-    RebirthButtonLabel, RebirthDisplay, ShopButton, ShopLabel, UpgradeButton, UpgradeKind, UpgradeLabel,
+    BuyQuantityButton, GoldDisplay, ParagonButton, ParagonKind, ParagonLabel, RateDisplay,
+    RebirthButton, RebirthButtonLabel, RebirthDisplay, ShopButton, ShopLabel, UpgradeButton,
+    UpgradeKind, UpgradeLabel,
 };
-use crate::resources::{fmt_gold, GoldPool, RebirthState, ShopState, UpgradeState};
+use crate::resources::{fmt_gold, BuyQuantity, GoldPool, RebirthState, ShopState, UpgradeState};
 use crate::systems::shape_name;
 
 // ── HUD setup ─────────────────────────────────────────────────────────────────
@@ -55,6 +56,21 @@ pub fn setup_hud(mut commands: Commands) {
                 TextColor(Color::srgb(1.00, 0.75, 0.20)),
                 RebirthDisplay,
             ));
+            // Buy quantity selector row
+            parent
+                .spawn(Node {
+                    flex_direction: FlexDirection::Row,
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
+                    column_gap: Val::Px(4.0),
+                    margin: UiRect::top(Val::Px(4.0)),
+                    ..default()
+                })
+                .with_children(|row| {
+                    for qty in BuyQuantity::ALL {
+                        spawn_buy_quantity_button(row, qty, qty == BuyQuantity::One);
+                    }
+                });
         });
 
     // Bottom panel: three rows — shop on top, session upgrades middle, rebirth & paragon bottom.
@@ -118,6 +134,65 @@ pub fn setup_hud(mut commands: Commands) {
                     spawn_paragon_button(row, ParagonKind::AuraBoost, "🌟 Paragon\nGold Boost");
                 });
         });
+}
+
+// ── Buy quantity button ───────────────────────────────────────────────────────
+
+fn spawn_buy_quantity_button(parent: &mut ChildBuilder, qty: BuyQuantity, active: bool) {
+    let bg = if active {
+        Color::srgb(0.40, 0.20, 0.60)
+    } else {
+        Color::srgb(0.15, 0.10, 0.25)
+    };
+    let border = if active {
+        Color::srgb(1.00, 0.80, 1.00)
+    } else {
+        Color::srgb(0.60, 0.40, 1.00)
+    };
+    parent
+        .spawn((
+            Button,
+            Node {
+                width: Val::Px(52.0),
+                height: Val::Px(26.0),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                border: UiRect::all(Val::Px(1.5)),
+                ..default()
+            },
+            BackgroundColor(bg),
+            BorderColor(border),
+            BuyQuantityButton(qty),
+        ))
+        .with_children(|button| {
+            button.spawn((
+                Text::new(qty.label()),
+                TextFont {
+                    font_size: 12.0,
+                    ..default()
+                },
+                TextColor(Color::WHITE),
+            ));
+        });
+}
+
+/// Highlight the currently active buy-quantity button.
+pub fn update_buy_quantity_ui(
+    buy_qty: Res<BuyQuantity>,
+    mut buttons_q: Query<(&mut BackgroundColor, &mut BorderColor, &BuyQuantityButton)>,
+) {
+    if !buy_qty.is_changed() {
+        return;
+    }
+    for (mut bg, mut border, btn) in buttons_q.iter_mut() {
+        if btn.0 == *buy_qty {
+            *bg = BackgroundColor(Color::srgb(0.40, 0.20, 0.60));
+            *border = BorderColor(Color::srgb(1.00, 0.80, 1.00));
+        } else {
+            *bg = BackgroundColor(Color::srgb(0.15, 0.10, 0.25));
+            *border = BorderColor(Color::srgb(0.60, 0.40, 1.00));
+        }
+    }
 }
 
 // ── Shop button ───────────────────────────────────────────────────────────────

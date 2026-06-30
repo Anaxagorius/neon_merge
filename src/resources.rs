@@ -205,6 +205,56 @@ impl RebirthState {
     }
 }
 
+// ── Buy quantity ──────────────────────────────────────────────────────────────
+
+/// How many items to purchase per shop button click.
+#[derive(Resource, Default, Clone, Copy, PartialEq, Eq, Debug)]
+pub enum BuyQuantity {
+    #[default]
+    One,
+    Ten,
+    TwentyFive,
+    Fifty,
+    Hundred,
+    Max,
+}
+
+impl BuyQuantity {
+    /// Display label for the selector button.
+    pub fn label(self) -> &'static str {
+        match self {
+            BuyQuantity::One      => "x1",
+            BuyQuantity::Ten      => "x10",
+            BuyQuantity::TwentyFive => "x25",
+            BuyQuantity::Fifty    => "x50",
+            BuyQuantity::Hundred  => "x100",
+            BuyQuantity::Max      => "MAX",
+        }
+    }
+
+    /// Concrete count, or `None` for MAX (caller must compute from context).
+    pub fn count(self) -> Option<u32> {
+        match self {
+            BuyQuantity::One      => Some(1),
+            BuyQuantity::Ten      => Some(10),
+            BuyQuantity::TwentyFive => Some(25),
+            BuyQuantity::Fifty    => Some(50),
+            BuyQuantity::Hundred  => Some(100),
+            BuyQuantity::Max      => None,
+        }
+    }
+
+    /// All variants in display order.
+    pub const ALL: [BuyQuantity; 6] = [
+        BuyQuantity::One,
+        BuyQuantity::Ten,
+        BuyQuantity::TwentyFive,
+        BuyQuantity::Fifty,
+        BuyQuantity::Hundred,
+        BuyQuantity::Max,
+    ];
+}
+
 // ── Large-number formatter ────────────────────────────────────────────────────
 
 /// Formats a gold value with appropriate suffix (K, M, B, T, Qa).

@@ -5,9 +5,9 @@ use bevy::sprite::{ColorMaterial, MeshMaterial2d};
 use bevy::math::primitives::{Circle as CirclePrimitive, RegularPolygon, Rectangle as RectanglePrimitive, Ellipse};
 
 use crate::animations::{MergeFlash, SpawnPop, PulseEffect, GlowEffect};
-use crate::components::{GridPos, LabelEntity, ParagonButton, ParagonKind, RebirthButton, ShapeLabel, ShapeLevel, UpgradeButton, UpgradeKind, ShopButton};
+use crate::components::{BuyQuantityButton, GridPos, LabelEntity, ParagonButton, ParagonKind, RebirthButton, ShapeLabel, ShapeLevel, UpgradeButton, UpgradeKind, ShopButton};
 use crate::resources::{
-    grid_to_world, world_to_grid, GoldPool, Grid, RebirthState, DragState, DragInfo, ShopState,
+    grid_to_world, world_to_grid, BuyQuantity, GoldPool, Grid, RebirthState, DragState, DragInfo, ShopState,
     UpgradeState, CELL_SIZE, GRID_COLS, GRID_ROWS,
 };
 use crate::save::{write_save, SaveData};
@@ -553,6 +553,18 @@ pub fn handle_drag_end(
 
 // ── Shop system ───────────────────────────────────────────────────────────────
 
+/// Handle clicks on the buy-quantity selector buttons in the top HUD.
+pub fn handle_buy_quantity_selection(
+    interaction_q: Query<(&Interaction, &BuyQuantityButton), Changed<Interaction>>,
+    mut buy_qty: ResMut<BuyQuantity>,
+) {
+    for (interaction, btn) in interaction_q.iter() {
+        if *interaction == Interaction::Pressed {
+            *buy_qty = btn.0;
+        }
+    }
+}
+
 pub fn handle_shop_purchase(
     interaction_q: Query<(&Interaction, &ShopButton), Changed<Interaction>>,
     mut gold: ResMut<GoldPool>,
@@ -561,6 +573,7 @@ pub fn handle_shop_purchase(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
+    buy_qty: Res<BuyQuantity>,
 ) {
     for (interaction, btn) in interaction_q.iter() {
         if *interaction != Interaction::Pressed {
@@ -572,10 +585,21 @@ pub fn handle_shop_purchase(
             continue;
         }
 
-        let level = shop.available_levels[slot_index];
-        let cost = shape_shop_cost(level);
+        // Determine how many purchases to attempt
+        let empty_cells: u32 = (0..GRID_ROWS)
+            .flat_map(|r| (0..GRID_COLS).map(move |c| (c, r)))
+            .filter(|&(c, r)| grid.is_empty(c, r))
+            .count() as u32;
 
-        if gold.total >= cost {
+        let count = buy_qty.count().unwrap_or(empty_cells).min(empty_cells);
+
+        for _ in 0..count {
+            let level = shop.available_levels[slot_index];
+            let cost = shape_shop_cost(level);
+
+            if gold.total < cost {
+                break;
+            }
             gold.total -= cost;
 
             // Find first empty cell (scan bottom-left to top-right)
@@ -589,9 +613,13 @@ pub fn handle_shop_purchase(
                 }
             }
 
-            if let Some((col, row)) = spawn_cell {
-                spawn_shape(&mut commands, &mut meshes, &mut materials, &mut grid, col, row, level);
-            }
+            let Some((col, row)) = spawn_cell else {
+                // Grid is full; refund the cost we just deducted and stop
+                gold.total += cost;
+                break;
+            };
+
+            spawn_shape(&mut commands, &mut meshes, &mut materials, &mut grid, col, row, level);
 
             // Refresh this shop slot with a new random level
             // Weighted: 70% level 1, 20% level 2, 10% level 3+ (up to unlocked max)
