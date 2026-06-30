@@ -84,3 +84,9 @@ pub struct ShopButton(pub usize);
 /// Marks the text child of a shop button.
 #[derive(Component)]
 pub struct ShopLabel(pub usize);
+
+// ── Buy quantity selector ─────────────────────────────────────────────────────
+
+/// Marks one of the buy-quantity selector buttons in the top HUD.
+#[derive(Component, Clone, Copy)]
+pub struct BuyQuantityButton(pub crate::resources::BuyQuantity);
